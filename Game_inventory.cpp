@@ -6,26 +6,23 @@
 #include <chrono>
 #include <fstream>
 #include <map>
-#include <windows.h> // Do kolorów i podwójnego buforowania
-#include <conio.h>   // Do funkcji _kbhit() i _getch()
+#include <windows.h>
+#include <conio.h>
 using namespace std;
 
-// Funkcja do zmiany koloru tekstu w terminalu
 void setColor(int color) {
     SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), color);
 }
 
-// Funkcja do ustawienia pozycji kursora w konsoli
 void setCursorPosition(int x, int y) {
     COORD coord = { (SHORT)x, (SHORT)y };
     SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), coord);
 }
 
-// Funkcja do ukrycia kursora
 void hideCursor() {
     CONSOLE_CURSOR_INFO cursorInfo;
     GetConsoleCursorInfo(GetStdHandle(STD_OUTPUT_HANDLE), &cursorInfo);
-    cursorInfo.bVisible = false; // Ukryj kursor
+    cursorInfo.bVisible = false;
     SetConsoleCursorInfo(GetStdHandle(STD_OUTPUT_HANDLE), &cursorInfo);
 }
 
@@ -44,8 +41,17 @@ public:
         : name(name), price(price), durability(durability), rarity(rarity) {}
 
     virtual void display() const {
-        setColor(15); // Bia³y tekst
-        cout << name << " (" << price << "g, Durability: " << durability << ", Rarity: " << rarity << ")\n";
+        setColor(15);
+        cout << name << " (" << price << "g, Durability: " << durability << ", Rarity: ";
+        switch(rarity) {
+            case common: setColor(8); cout << "Common"; break;
+            case uncommon: setColor(2); cout << "Uncommon"; break;
+            case magic: setColor(9); cout << "Magic"; break;
+            case rare: setColor(5); cout << "Rare"; break;
+            case legendary: setColor(6); cout << "Legendary"; break;
+        }
+        setColor(15);
+        cout << ")\n";
     }
 
     string getName() const { return name; }
@@ -67,9 +73,9 @@ public:
 
     void display() const override {
         Item::display();
-        setColor(12); // Czerwony tekst
+        setColor(12);
         cout << "Damage: " << damage << "\n";
-        setColor(15); // Powrót do bia³ego tekstu
+        setColor(15);
     }
 
     float getDamage() const { return damage; }
@@ -85,9 +91,9 @@ public:
 
     void display() const override {
         Item::display();
-        setColor(11); // Jasnoniebieski tekst
+        setColor(11);
         cout << "Defense: " << defense << "\n";
-        setColor(15); // Powrót do bia³ego tekstu
+        setColor(15);
     }
 
     float getDefense() const { return defense; }
@@ -103,9 +109,9 @@ public:
     Enemy(string n, float hp, float dmg, int exp) : name(n), HP(hp), damage(dmg), experience(exp) {}
     void attack(float& playerHP) const {
         playerHP -= damage;
-        setColor(12); // Czerwony tekst
+        setColor(12);
         cout << name << " attacks! Player HP: " << playerHP << "\n";
-        setColor(15); // Powrót do bia³ego tekstu
+        setColor(15);
     }
 };
 
@@ -124,22 +130,27 @@ private:
     map<string, int> stats;
 
 public:
-    Player(string n) : name(n), HP(100.0f), maxHP(100.0f), gold(50.0f), level(1), experience(0), nextLevelExp(100) {
+    Player(string n) : name(n), HP(100.0f), maxHP(100.0f), gold(100.0f), level(1), experience(0), nextLevelExp(100) {
         stats["strength"] = 10;
         stats["agility"] = 10;
         stats["intelligence"] = 10;
+
+        inventory.push_back(Weapon("Basic Sword", 10.0f, 100, common, 10.0f));
+        inventory.push_back(Armor("Basic Armor", 20.0f, 100, common, 5.0f));
     }
 
     void showStats() const {
-        setColor(10); // Zielony tekst
+        setColor(10);
         cout << "Player: " << name << " | HP: " << HP << "/" << maxHP << " | Gold: " << gold << "\n";
-        setColor(14); // ¯ó³ty tekst
+        setColor(14);
         cout << "Level: " << level << " | Exp: " << experience << "/" << nextLevelExp << "\n";
+        cout << "Weapon: ";
         weapon.display();
+        cout << "Armor: ";
         armor.display();
-        setColor(11); // Jasnoniebieski tekst
+        setColor(11);
         cout << "Strength: " << stats.at("strength") << " | Agility: " << stats.at("agility") << " | Intelligence: " << stats.at("intelligence") << "\n";
-        setColor(15); // Powrót do bia³ego tekstu
+        setColor(15);
     }
 
     void gainExperience(int exp) {
@@ -158,21 +169,21 @@ public:
         stats["strength"] += 2;
         stats["agility"] += 2;
         stats["intelligence"] += 2;
-        setColor(14); // ¯ó³ty tekst
+        setColor(14);
         cout << "Level up! You are now level " << level << "!\n";
-        setColor(15); // Powrót do bia³ego tekstu
+        setColor(15);
     }
 
     void attack(Enemy& enemy) {
         float damage = weapon.getDamage() + stats.at("strength");
-        setColor(12); // Czerwony tekst
+        setColor(12);
         cout << "You attack " << enemy.name << " for " << damage << " damage!\n";
-        setColor(15); // Powrót do bia³ego tekstu
+        setColor(15);
         enemy.HP -= damage;
         if (enemy.HP <= 0) {
-            setColor(10); // Zielony tekst
+            setColor(10);
             cout << "Enemy defeated! You gained " << enemy.experience << " experience.\n";
-            setColor(15); // Powrót do bia³ego tekstu
+            setColor(15);
             gainExperience(enemy.experience);
         }
         else {
@@ -183,85 +194,154 @@ public:
     void lootChest() {
         float lootGold = static_cast<float>(rand() % 100 + 1);
         gold += lootGold;
-        setColor(14); // ¯ó³ty tekst
-        cout << "You found " << lootGold << " gold!\n";
-        setColor(15); // Powrót do bia³ego tekstu
-    }
 
-    void showInventory() const {
-        setColor(11); // Jasnoniebieski tekst
-        cout << "Inventory:\n";
-        for (const auto& item : inventory) {
-            item.display();
+        int itemType = rand() % 3;
+        switch(itemType) {
+            case 0:
+                inventory.push_back(Item("Health Potion", 20.0f, 1, common));
+                break;
+            case 1:
+                inventory.push_back(Weapon("Random Sword", 30.0f, 80, uncommon, 12.0f));
+                break;
+            case 2:
+                inventory.push_back(Armor("Random Armor", 40.0f, 80, uncommon, 8.0f));
+                break;
         }
-        setColor(15); // Powrót do bia³ego tekstu
+
+        setColor(14);
+        cout << "You found " << lootGold << " gold and an item!\n";
+        setColor(15);
     }
 
-    void equipItem() {
+    void showInventoryGrid() const {
+        system("cls");
+        setColor(11);
+        cout << "=== INVENTORY (4x4) ===\n";
+        cout << "Gold: " << gold << "\n\n";
+
+        cout << "    1   2   3   4  \n";
+        cout << "  +---+---+---+---+\n";
+
+        for (int row = 0; row < 4; ++row) {
+            cout << row + 1 << " |";
+            for (int col = 0; col < 4; ++col) {
+                int index = row * 4 + col;
+                if (index < inventory.size()) {
+                    switch(inventory[index].getRarity()) {
+                        case common: setColor(8); break;
+                        case uncommon: setColor(2); break;
+                        case magic: setColor(9); break;
+                        case rare: setColor(5); break;
+                        case legendary: setColor(6); break;
+                    }
+                    cout << " " << inventory[index].getName()[0] << " ";
+                    setColor(15);
+                    cout << "|";
+                } else {
+                    cout << "   |";
+                }
+            }
+            cout << "\n  +---+---+---+---+\n";
+        }
+        setColor(15);
+        cout << "\n[I] Inspect  [E] Equip  [X] Exit\n";
+    }
+
+    void inspectItem() const {
         if (inventory.empty()) {
-            setColor(12); // Czerwony tekst
-            cout << "No items to equip!\n";
-            setColor(15); // Powrót do bia³ego tekstu
+            setColor(12);
+            cout << "No items to inspect!\n";
+            setColor(15);
             return;
         }
 
-        showInventory();
-        cout << "Select item to equip (1-" << inventory.size() << "): ";
         int choice;
-        cin >> choice;
+        do {
+            showInventoryGrid();
+            cout << "Select item to inspect (1-4 for column, 1-4 for row, or 0 to cancel): ";
+            cin >> choice;
 
-        if (choice > 0 && choice <= inventory.size()) {
-            Item& item = inventory[choice - 1];
-            if (dynamic_cast<Weapon*>(&item)) {
-                weapon = *dynamic_cast<Weapon*>(&item);
-                setColor(10); // Zielony tekst
-                cout << "Weapon equipped!\n";
+            if (choice == 0) return;
+
+            int row = choice / 10 - 1;
+            int col = choice % 10 - 1;
+
+            if (row >= 0 && row < 4 && col >= 0 && col < 4) {
+                int index = row * 4 + col;
+                if (index < inventory.size()) {
+                    system("cls");
+                    setColor(14);
+                    cout << "=== ITEM DETAILS ===\n";
+                    inventory[index].display();
+                    setColor(15);
+                    cout << "\nPress any key to continue...";
+                    _getch();
+                }
             }
-            else if (dynamic_cast<Armor*>(&item)) {
-                armor = *dynamic_cast<Armor*>(&item);
-                setColor(10); // Zielony tekst
-                cout << "Armor equipped!\n";
-            }
-            setColor(15); // Powrót do bia³ego tekstu
+        } while (choice != 0);
+    }
+
+    void equipFromInventory() {
+        if (inventory.empty()) {
+            setColor(12);
+            cout << "No items to equip!\n";
+            setColor(15);
+            return;
         }
+
+        int choice;
+        do {
+            showInventoryGrid();
+            cout << "Select item to equip (1-4 for column, 1-4 for row, or 0 to cancel): ";
+            cin >> choice;
+
+            if (choice == 0) return;
+
+            int row = choice / 10 - 1;
+            int col = choice % 10 - 1;
+
+            if (row >= 0 && row < 4 && col >= 0 && col < 4) {
+                int index = row * 4 + col;
+                if (index < inventory.size()) {
+                    Item& item = inventory[index];
+                    if (dynamic_cast<Weapon*>(&item)) {
+                        weapon = *dynamic_cast<Weapon*>(&item);
+                        setColor(10);
+                        cout << "Weapon equipped!\n";
+                    }
+                    else if (dynamic_cast<Armor*>(&item)) {
+                        armor = *dynamic_cast<Armor*>(&item);
+                        setColor(10);
+                        cout << "Armor equipped!\n";
+                    }
+                    else {
+                        setColor(12);
+                        cout << "This item cannot be equipped!\n";
+                    }
+                    setColor(15);
+                    cout << "Press any key to continue...";
+                    _getch();
+                }
+            }
+        } while (choice != 0);
     }
 
     void addItemToInventory(const Item& item) {
-        if (inventory.size() < 9) {
+        if (inventory.size() < 16) {
             inventory.push_back(item);
-            setColor(10); // Zielony tekst
+            setColor(10);
             cout << "Item added to inventory!\n";
-            setColor(15); // Powrót do bia³ego tekstu
-        }
-        else {
-            setColor(12); // Czerwony tekst
+            setColor(15);
+        } else {
+            setColor(12);
             cout << "Inventory is full!\n";
-            setColor(15); // Powrót do bia³ego tekstu
-        }
-    }
-
-    void removeItemFromInventory() {
-        if (inventory.empty()) {
-            setColor(12); // Czerwony tekst
-            cout << "No items to remove!\n";
-            setColor(15); // Powrót do bia³ego tekstu
-            return;
-        }
-
-        showInventory();
-        cout << "Select item to remove (1-" << inventory.size() << "): ";
-        int choice;
-        cin >> choice;
-
-        if (choice > 0 && choice <= inventory.size()) {
-            inventory.erase(inventory.begin() + choice - 1);
-            setColor(10); // Zielony tekst
-            cout << "Item removed from inventory!\n";
-            setColor(15); // Powrót do bia³ego tekstu
+            setColor(15);
         }
     }
 
     float getHP() const { return HP; }
+    float getGold() const { return gold; }
+    void spendGold(float amount) { gold -= amount; }
 };
 
 class NPC {
@@ -271,28 +351,48 @@ public:
 
     NPC(string n) : name(n) {
         shopItems.push_back(Item("Health Potion", 20.0f, 1, common));
-        shopItems.push_back(Item("Steel Sword", 50.0f, 100, uncommon));
+        shopItems.push_back(Weapon("Steel Sword", 50.0f, 100, uncommon, 15.0f));
+        shopItems.push_back(Armor("Chainmail", 75.0f, 100, uncommon, 10.0f));
     }
 
     void showShop() const {
-        setColor(14); // ¯ó³ty tekst
+        setColor(14);
         cout << "Welcome to " << name << "'s shop!\n";
+        cout << "----------------------------\n";
         for (size_t i = 0; i < shopItems.size(); ++i) {
             cout << i + 1 << ". ";
             shopItems[i].display();
         }
-        setColor(15); // Powrót do bia³ego tekstu
+        setColor(15);
     }
 
-    void trade(Player& player) const {
-        showShop();
-        cout << "What do you want to buy? (Enter number or 0 to exit): ";
-        int choice;
-        cin >> choice;
-        if (choice > 0 && choice <= shopItems.size()) {
-            Item item = shopItems[choice - 1];
-            player.addItemToInventory(item);
-        }
+    void trade(Player& player) {
+        char choice;
+        do {
+            system("cls");
+            showShop();
+            cout << "\nYour gold: " << player.getGold() << "\n";
+            cout << "[1-" << shopItems.size() << "] Buy  [X] Exit\n";
+            choice = _getch();
+
+            if (choice >= '1' && choice <= '9') {
+                int itemIndex = choice - '1';
+                if (itemIndex < shopItems.size()) {
+                    if (player.getGold() >= shopItems[itemIndex].getPrice()) {
+                        player.addItemToInventory(shopItems[itemIndex]);
+                        player.spendGold(shopItems[itemIndex].getPrice());
+                        setColor(10);
+                        cout << "Purchase successful!\n";
+                        setColor(15);
+                    } else {
+                        setColor(12);
+                        cout << "Not enough gold!\n";
+                        setColor(15);
+                    }
+                    _getch();
+                }
+            }
+        } while (choice != 'x' && choice != 'X');
     }
 };
 
@@ -370,8 +470,8 @@ public:
     }
 
     void display() const {
-        setCursorPosition(0, 0); // Ustaw kursor na pocz¹tek konsoli
-        setColor(11); // Jasnoniebieski tekst
+        setCursorPosition(0, 0);
+        setColor(11);
         cout << "Location: " << location << "\n";
         cout << "Weather: ";
         switch (weather) {
@@ -380,32 +480,57 @@ public:
         case cloudy: cout << "Cloudy"; break;
         }
         cout << "\n";
-        setColor(15); // Powrót do bia³ego tekstu
+        setColor(15);
 
-        for (auto& row : grid) {
+        vector<vector<char>> displayGrid = grid;
+
+        for (const auto& chest : chests) {
+            displayGrid[chest.second][chest.first] = 'C';
+        }
+        for (const auto& enemy : enemies) {
+            displayGrid[enemy.second][enemy.first] = 'E';
+        }
+        for (const auto& npc : npcs) {
+            displayGrid[npc.second][npc.first] = 'N';
+        }
+        for (const auto& obstacle : obstacles) {
+            displayGrid[obstacle.second][obstacle.first] = '#';
+        }
+
+        displayGrid[playerY][playerX] = 'P';
+
+        for (auto& row : displayGrid) {
             for (char tile : row) {
-                if (tile == 'P') setColor(10); // Zielony tekst (gracz)
-                else if (tile == 'C') setColor(14); // ¯ó³ty tekst (skrzynia)
-                else if (tile == 'E') setColor(12); // Czerwony tekst (przeciwnik)
-                else if (tile == 'N') setColor(11); // Jasnoniebieski tekst (NPC)
-                else if (tile == '#') setColor(8); // Szary tekst (przeszkoda)
-                else setColor(15); // Bia³y tekst (reszta)
+                if (tile == 'P') setColor(10);
+                else if (tile == 'C') setColor(14);
+                else if (tile == 'E') setColor(12);
+                else if (tile == 'N') setColor(11);
+                else if (tile == '#') setColor(8);
+                else setColor(15);
                 cout << tile << " ";
             }
             cout << endl;
         }
-        setColor(15); // Powrót do bia³ego tekstu
+        setColor(15);
     }
 
     void movePlayer(char direction) {
-        grid[playerY][playerX] = '.';
+        int newX = playerX;
+        int newY = playerY;
+
         switch (direction) {
-        case 'w': case 'W': if (playerY > 0 && grid[playerY - 1][playerX] != '#') playerY--; break;
-        case 's': case 'S': if (playerY < size - 1 && grid[playerY + 1][playerX] != '#') playerY++; break;
-        case 'a': case 'A': if (playerX > 0 && grid[playerY][playerX - 1] != '#') playerX--; break;
-        case 'd': case 'D': if (playerX < size - 1 && grid[playerY][playerX + 1] != '#') playerX++; break;
+        case 'w': case 'W': newY--; break;
+        case 's': case 'S': newY++; break;
+        case 'a': case 'A': newX--; break;
+        case 'd': case 'D': newX++; break;
         }
-        grid[playerY][playerX] = 'P';
+
+        if (newX >= 0 && newX < size && newY >= 0 && newY < size && grid[newY][newX] != '#') {
+            grid[playerY][playerX] = '.';
+            playerX = newX;
+            playerY = newY;
+            grid[playerY][playerX] = 'P';
+        }
 
         if (playerX == 0 || playerX == size - 1 || playerY == 0 || playerY == size - 1) {
             generateNewTerrain();
@@ -431,7 +556,7 @@ public:
         return false;
     }
 
-       bool isNearEnemy(int& enemyX, int& enemyY) const {
+    bool isNearEnemy(int& enemyX, int& enemyY) const {
         for (auto& enemy : enemies) {
             if (abs(enemy.first - playerX) <= 1 && abs(enemy.second - playerY) <= 1) {
                 enemyX = enemy.first;
@@ -492,10 +617,9 @@ int main() {
     srand(time(0));
     Map gameMap(10);
     Player player("Hero");
-    Enemy enemy("Goblin", 30.0f, 5.0f, 50);
     NPC npc("Merchant");
 
-    hideCursor(); // Ukryj kursor
+    hideCursor();
 
     while (player.getHP() > 0) {
         gameMap.display();
@@ -508,49 +632,54 @@ int main() {
 
             if (input == 'f' || input == 'F') {
                 if (gameMap.isNearEnemy(x, y)) {
+                    Enemy enemy("Goblin", 30.0f, 5.0f, 50);
                     player.attack(enemy);
                     if (enemy.HP <= 0) {
-                        gameMap.removeEnemy(x, y); // Usuñ przeciwnika po pokonaniu
+                        gameMap.removeEnemy(x, y);
                     }
                 }
                 else {
-                    setColor(12); // Czerwony tekst
+                    setColor(12);
                     cout << "No enemy nearby!\n";
-                    setColor(15); // Powrót do bia³ego tekstu
+                    setColor(15);
                 }
             }
             else if (input == 'l' || input == 'L') {
                 if (gameMap.isNearChest(x, y)) {
                     player.lootChest();
-                    gameMap.removeChest(x, y); // Usuñ skrzyniê po otwarciu
+                    gameMap.removeChest(x, y);
                 }
                 else {
-                    setColor(12); // Czerwony tekst
+                    setColor(12);
                     cout << "No chest nearby!\n";
-                    setColor(15); // Powrót do bia³ego tekstu
+                    setColor(15);
                 }
             }
             else if (input == 't' || input == 'T') {
                 if (gameMap.isNearNPC(x, y)) {
                     npc.trade(player);
-                    gameMap.removeNPC(x, y); // Usuñ NPC po interakcji
                 }
                 else {
-                    setColor(12); // Czerwony tekst
+                    setColor(12);
                     cout << "No NPC nearby!\n";
-                    setColor(15); // Powrót do bia³ego tekstu
+                    setColor(15);
                 }
             }
             else if (input == 'i' || input == 'I') {
-                player.showInventory();
-                cout << "Equip item (E), remove item (R): ";
-                char inventoryInput = _getch();
-                if (inventoryInput == 'e' || inventoryInput == 'E') {
-                    player.equipItem();
-                }
-                else if (inventoryInput == 'r' || inventoryInput == 'R') {
-                    player.removeItemFromInventory();
-                }
+                char inventoryChoice;
+                do {
+                    player.showInventoryGrid();
+                    inventoryChoice = _getch();
+
+                    switch(tolower(inventoryChoice)) {
+                        case 'i':
+                            player.inspectItem();
+                            break;
+                        case 'e':
+                            player.equipFromInventory();
+                            break;
+                    }
+                } while (tolower(inventoryChoice) != 'x');
             }
             else {
                 gameMap.movePlayer(input);
@@ -560,8 +689,8 @@ int main() {
         this_thread::sleep_for(chrono::milliseconds(100));
     }
 
-    setColor(12); // Czerwony tekst
+    setColor(12);
     cout << "Game Over!" << endl;
-    setColor(15); // Powrót do bia³ego tekstu
+    setColor(15);
     return 0;
 }

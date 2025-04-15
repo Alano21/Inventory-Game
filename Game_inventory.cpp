@@ -4,130 +4,20 @@
 #include <ctime>
 #include <thread>
 #include <chrono>
-#include <fstream>
-#include <map>
 #include <string>
 #include <algorithm>
-
-// Wieloplatformowe nag丑wki
-#ifdef _WIN32
-#include <windows.h>
-#include <conio.h>
-#else
-#include <ncurses.h>
-#include <unistd.h>
+#include <map>
 #include <termios.h>
+#include <unistd.h>
 #include <fcntl.h>
-#endif
 
 using namespace std;
 
-// Wieloplatformowe funkcje pomocnicze
-namespace Platform {
-#ifdef _WIN32
-    void setColor(int color) {
-        SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), color);
-    }
-
-    void setCursorPosition(int x, int y) {
-        COORD coord = { (SHORT)x, (SHORT)y };
-        SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), coord);
-    }
-
-    void hideCursor() {
-        CONSOLE_CURSOR_INFO cursorInfo;
-        GetConsoleCursorInfo(GetStdHandle(STD_OUTPUT_HANDLE), &cursorInfo);
-        cursorInfo.bVisible = false;
-        SetConsoleCursorInfo(GetStdHandle(STD_OUTPUT_HANDLE), &cursorInfo);
-    }
-
-    int kbhit() {
-        return _kbhit();
-    }
-
-    int getch() {
-        return _getch();
-    }
-
-    void clearScreen() {
-        system("cls");
-    }
-#else
-    bool kbhit() {
-        struct termios oldt, newt;
-        int ch;
-        int oldf;
-
-        tcgetattr(STDIN_FILENO, &oldt);
-        newt = oldt;
-        newt.c_lflag &= ~(ICANON | ECHO);
-        tcsetattr(STDIN_FILENO, TCSANOW, &newt);
-        oldf = fcntl(STDIN_FILENO, F_GETFL, 0);
-        fcntl(STDIN_FILENO, F_SETFL, oldf | O_NONBLOCK);
-
-        ch = getchar();
-
-        tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
-        fcntl(STDIN_FILENO, F_SETFL, oldf);
-
-        if(ch != EOF) {
-            ungetc(ch, stdin);
-            return true;
-        }
-
-        return false;
-    }
-
-    int getch() {
-        struct termios oldt, newt;
-        int ch;
-        tcgetattr(STDIN_FILENO, &oldt);
-        newt = oldt;
-        newt.c_lflag &= ~(ICANON | ECHO);
-        tcsetattr(STDIN_FILENO, TCSANOW, &newt);
-        ch = getchar();
-        tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
-        return ch;
-    }
-
-    void clearScreen() {
-        system("clear");
-    }
-
-    void setColor(int color) {
-        // Prosta implementacja kolor體 dla terminali Unix
-        const char* colors[] = {
-            "\033[0m",      // 0: Reset
-            "\033[31m",     // 1: Red
-            "\033[32m",     // 2: Green
-            "\033[33m",     // 3: Yellow
-            "\033[34m",     // 4: Blue
-            "\033[35m",     // 5: Magenta
-            "\033[36m",     // 6: Cyan
-            "\033[37m",     // 7: White
-            "\033[90m",     // 8: Gray
-            "\033[94m",     // 9: Light Blue
-            "\033[91m",     // 10: Light Red
-            "\033[92m",     // 11: Light Green
-            "\033[93m",     // 12: Light Yellow
-            "\033[96m",     // 13: Light Cyan
-        };
-        cout << colors[color % 14];
-    }
-
-    void hideCursor() {
-        cout << "\033[?25l";
-    }
-
-    void setCursorPosition(int x, int y) {
-        printf("\033[%d;%dH", y+1, x+1);
-    }
-#endif
-}
-
+// Definicja typ贸w wyliczeniowych dla rzadko艣ci przedmiot贸w i pogody
 enum Rarities { common, uncommon, magic, rare, legendary };
 enum Weather { sunny, rainy, cloudy };
 
+// Klasa bazowa dla przedmiot贸w w grze
 class Item {
 protected:
     string name;
@@ -140,16 +30,16 @@ public:
         : name(name), price(price), durability(durability), rarity(rarity) {}
 
     virtual void display() const {
-        Platform::setColor(15);
+        cout << "\033[37m";
         cout << name << " (" << price << "g, Durability: " << durability << ", Rarity: ";
         switch(rarity) {
-            case common: Platform::setColor(8); cout << "Common"; break;
-            case uncommon: Platform::setColor(2); cout << "Uncommon"; break;
-            case magic: Platform::setColor(9); cout << "Magic"; break;
-            case rare: Platform::setColor(5); cout << "Rare"; break;
-            case legendary: Platform::setColor(6); cout << "Legendary"; break;
+        case common: cout << "\033[90mCommon"; break;
+        case uncommon: cout << "\033[32mUncommon"; break;
+        case magic: cout << "\033[94mMagic"; break;
+        case rare: cout << "\033[35mRare"; break;
+        case legendary: cout << "\033[36mLegendary"; break;
         }
-        Platform::setColor(15);
+        cout << "\033[37m";
         cout << ")\n";
     }
 
@@ -162,6 +52,7 @@ public:
     void setDurability(int newDurability) { durability = newDurability; }
 };
 
+// Klasa dla broni
 class Weapon : public Item {
 private:
     float damage;
@@ -172,14 +63,15 @@ public:
 
     void display() const override {
         Item::display();
-        Platform::setColor(12);
+        cout << "\033[93m";
         cout << "Damage: " << damage << "\n";
-        Platform::setColor(15);
+        cout << "\033[37m";
     }
 
     float getDamage() const { return damage; }
 };
 
+// Klasa dla zbroi
 class Armor : public Item {
 private:
     float defense;
@@ -190,14 +82,15 @@ public:
 
     void display() const override {
         Item::display();
-        Platform::setColor(11);
+        cout << "\033[92m";
         cout << "Defense: " << defense << "\n";
-        Platform::setColor(15);
+        cout << "\033[37m";
     }
 
     float getDefense() const { return defense; }
 };
 
+// Klasa dla przeciwnik贸w
 class Enemy {
 public:
     string name;
@@ -205,15 +98,17 @@ public:
     float damage;
     int experience;
 
-    Enemy(string n, float hp, float dmg, int exp) : name(n), HP(hp), damage(dmg), experience(exp) {}
+    Enemy(string n, float hp, float dmg) : name(n), HP(hp), damage(dmg), experience(20) {}
+
     void attack(float& playerHP) const {
         playerHP -= damage;
-        Platform::setColor(12);
+        cout << "\033[93m";
         cout << name << " attacks! Player HP: " << playerHP << "\n";
-        Platform::setColor(15);
+        cout << "\033[37m";
     }
 };
 
+// Klasa dla gracza
 class Player {
 private:
     string name;
@@ -225,7 +120,7 @@ private:
     int nextLevelExp;
     Weapon weapon;
     Armor armor;
-    vector<Item> inventory;
+    vector<Item*> inventory;
     map<string, int> stats;
 
 public:
@@ -234,22 +129,28 @@ public:
         stats["agility"] = 10;
         stats["intelligence"] = 10;
 
-        inventory.push_back(Weapon("Basic Sword", 10.0f, 100, common, 10.0f));
-        inventory.push_back(Armor("Basic Armor", 20.0f, 100, common, 5.0f));
+        inventory.push_back(new Weapon("Basic Sword", 10.0f, 100, common, 10.0f));
+        inventory.push_back(new Armor("Basic Armor", 20.0f, 100, common, 5.0f));
+    }
+
+    ~Player() {
+        for (auto item : inventory) {
+            delete item;
+        }
     }
 
     void showStats() const {
-        Platform::setColor(10);
+        cout << "\033[91m";
         cout << "Player: " << name << " | HP: " << HP << "/" << maxHP << " | Gold: " << gold << "\n";
-        Platform::setColor(14);
+        cout << "\033[96m";
         cout << "Level: " << level << " | Exp: " << experience << "/" << nextLevelExp << "\n";
         cout << "Weapon: ";
         weapon.display();
         cout << "Armor: ";
         armor.display();
-        Platform::setColor(11);
+        cout << "\033[92m";
         cout << "Strength: " << stats.at("strength") << " | Agility: " << stats.at("agility") << " | Intelligence: " << stats.at("intelligence") << "\n";
-        Platform::setColor(15);
+        cout << "\033[37m";
     }
 
     void gainExperience(int exp) {
@@ -268,53 +169,58 @@ public:
         stats["strength"] += 2;
         stats["agility"] += 2;
         stats["intelligence"] += 2;
-        Platform::setColor(14);
-        cout << "Level up! You are now level " << level << "!\n";
-        Platform::setColor(15);
+        cout << "\033[96m";
+        cout << "Level Up! You are now level " << level << "!\n";
+        cout << "\033[37m";
     }
 
     void attack(Enemy& enemy) {
         float damage = weapon.getDamage() + stats.at("strength");
-        Platform::setColor(12);
+        cout << "\033[93m";
         cout << "You attack " << enemy.name << " for " << damage << " damage!\n";
-        Platform::setColor(15);
+        cout << "\033[37m";
         enemy.HP -= damage;
         if (enemy.HP <= 0) {
-            Platform::setColor(10);
-            cout << "Enemy defeated! You gained " << enemy.experience << " experience.\n";
-            Platform::setColor(15);
+            cout << "\033[91m";
+            cout << "Enemy defeated! Gained " << enemy.experience << " experience.\n";
+            cout << "\033[37m";
             gainExperience(enemy.experience);
-        }
-        else {
+        } else {
             enemy.attack(HP);
+            this_thread::sleep_for(chrono::seconds(3));
+            cout << "\033[2J\033[1;1H"; // Clear screen after 3 seconds
         }
     }
 
     void lootChest() {
         float lootGold = static_cast<float>(rand() % 100 + 1);
         gold += lootGold;
+        int expGained = 20; // EXP for looting a chest
+        gainExperience(expGained);
 
         int itemType = rand() % 3;
         switch(itemType) {
-            case 0:
-                inventory.push_back(Item("Health Potion", 20.0f, 1, common));
-                break;
-            case 1:
-                inventory.push_back(Weapon("Random Sword", 30.0f, 80, uncommon, 12.0f));
-                break;
-            case 2:
-                inventory.push_back(Armor("Random Armor", 40.0f, 80, uncommon, 8.0f));
-                break;
+        case 0:
+            inventory.push_back(new Item("Health Potion", 20.0f, 1, common));
+            break;
+        case 1:
+            inventory.push_back(new Weapon("Random Sword", 30.0f, 80, uncommon, 12.0f));
+            break;
+        case 2:
+            inventory.push_back(new Armor("Random Armor", 40.0f, 80, uncommon, 8.0f));
+            break;
         }
 
-        Platform::setColor(14);
-        cout << "You found " << lootGold << " gold and an item!\n";
-        Platform::setColor(15);
+        cout << "\033[96m";
+        cout << "Found " << lootGold << " gold, an item, and " << expGained << " EXP!\n";
+        cout << "\033[37m";
+        this_thread::sleep_for(chrono::seconds(3)); // Wait 3 seconds
+        cout << "\033[2J\033[1;1H"; // Clear screen
     }
 
-    void showInventoryGrid() const {
-        Platform::clearScreen();
-        Platform::setColor(11);
+    void showInventoryGridWithCursor(int cursorRow, int cursorCol) const {
+        cout << "\033[2J\033[1;1H";
+        cout << "\033[92m";
         cout << "=== INVENTORY (4x4) ===\n";
         cout << "Gold: " << gold << "\n\n";
 
@@ -325,176 +231,232 @@ public:
             cout << row + 1 << " |";
             for (int col = 0; col < 4; ++col) {
                 int index = row * 4 + col;
-                if (index < inventory.size()) {
-                    switch(inventory[index].getRarity()) {
-                        case common: Platform::setColor(8); break;
-                        case uncommon: Platform::setColor(2); break;
-                        case magic: Platform::setColor(9); break;
-                        case rare: Platform::setColor(5); break;
-                        case legendary: Platform::setColor(6); break;
-                    }
-                    cout << " " << inventory[index].getName()[0] << " ";
-                    Platform::setColor(15);
-                    cout << "|";
+                if (row == cursorRow && col == cursorCol) {
+                    cout << "\033[91m";
+                    cout << "[";
                 } else {
-                    cout << "   |";
+                    cout << " ";
                 }
+                if (index < inventory.size()) {
+                    switch(inventory[index]->getRarity()) {
+                    case common: cout << "\033[90m"; break;
+                    case uncommon: cout << "\033[32m"; break;
+                    case magic: cout << "\033[94m"; break;
+                    case rare: cout << "\033[35m"; break;
+                    case legendary: cout << "\033[36m"; break;
+                    }
+                    cout << inventory[index]->getName()[0];
+                    cout << "\033[37m";
+                } else {
+                    cout << " ";
+                }
+                if (row == cursorRow && col == cursorCol) {
+                    cout << "\033[91m";
+                    cout << "]";
+                } else {
+                    cout << " ";
+                }
+                cout << "\033[37m";
+                cout << "|";
             }
             cout << "\n  +---+---+---+---+\n";
         }
-        Platform::setColor(15);
+        cout << "\033[37m";
         cout << "\n[I] Inspect  [E] Equip  [X] Exit\n";
     }
 
     void inspectItem() const {
         if (inventory.empty()) {
-            Platform::setColor(12);
+            cout << "\033[93m";
             cout << "No items to inspect!\n";
-            Platform::setColor(15);
+            cout << "\033[37m";
             return;
         }
 
-        int choice;
+        int cursorRow = 0, cursorCol = 0;
+        char input;
+
         do {
-            showInventoryGrid();
-            cout << "Select item to inspect (1-4 for column, 1-4 for row, or 0 to cancel): ";
-            cin >> choice;
+            showInventoryGridWithCursor(cursorRow, cursorCol);
+            input = tolower(getch());
 
-            if (choice == 0) return;
+            if (input == 'w' && cursorRow > 0) cursorRow--;
+            if (input == 's' && cursorRow < 3) cursorRow++;
+            if (input == 'a' && cursorCol > 0) cursorCol--;
+            if (input == 'd' && cursorCol < 3) cursorCol++;
 
-            int row = choice / 10 - 1;
-            int col = choice % 10 - 1;
-
-            if (row >= 0 && row < 4 && col >= 0 && col < 4) {
-                int index = row * 4 + col;
+            if (input == 'i') {
+                int index = cursorRow * 4 + cursorCol;
                 if (index < inventory.size()) {
-                    Platform::clearScreen();
-                    Platform::setColor(14);
+                    cout << "\033[2J\033[1;1H";
+                    cout << "\033[96m";
                     cout << "=== ITEM DETAILS ===\n";
-                    inventory[index].display();
-                    Platform::setColor(15);
+                    inventory[index]->display();
+                    cout << "\033[37m";
                     cout << "\nPress any key to continue...";
-                    Platform::getch();
+                    getch();
                 }
             }
-        } while (choice != 0);
+        } while (input != 'x');
     }
 
     void equipFromInventory() {
         if (inventory.empty()) {
-            Platform::setColor(12);
+            cout << "\033[93m";
             cout << "No items to equip!\n";
-            Platform::setColor(15);
+            cout << "\033[37m";
             return;
         }
 
-        int choice;
+        int cursorRow = 0, cursorCol = 0;
+        char input;
+
         do {
-            showInventoryGrid();
-            cout << "Select item to equip (1-4 for column, 1-4 for row, or 0 to cancel): ";
-            cin >> choice;
+            showInventoryGridWithCursor(cursorRow, cursorCol);
+            input = tolower(getch());
 
-            if (choice == 0) return;
+            if (input == 'w' && cursorRow > 0) cursorRow--;
+            if (input == 's' && cursorRow < 3) cursorRow++;
+            if (input == 'a' && cursorCol > 0) cursorCol--;
+            if (input == 'd' && cursorCol < 3) cursorCol++;
 
-            int row = choice / 10 - 1;
-            int col = choice % 10 - 1;
-
-            if (row >= 0 && row < 4 && col >= 0 && col < 4) {
-                int index = row * 4 + col;
+            if (input == 'e') {
+                int index = cursorRow * 4 + cursorCol;
                 if (index < inventory.size()) {
-                    Item& item = inventory[index];
-                    if (dynamic_cast<Weapon*>(&item)) {
-                        weapon = *dynamic_cast<Weapon*>(&item);
-                        Platform::setColor(10);
+                    Item* item = inventory[index];
+                    if (Weapon* weaponPtr = dynamic_cast<Weapon*>(item)) {
+                        weapon = *weaponPtr;
+                        cout << "\033[91m";
                         cout << "Weapon equipped!\n";
-                    }
-                    else if (dynamic_cast<Armor*>(&item)) {
-                        armor = *dynamic_cast<Armor*>(&item);
-                        Platform::setColor(10);
+                    } else if (Armor* armorPtr = dynamic_cast<Armor*>(item)) {
+                        armor = *armorPtr;
+                        cout << "\033[91m";
                         cout << "Armor equipped!\n";
-                    }
-                    else {
-                        Platform::setColor(12);
+                    } else {
+                        cout << "\033[93m";
                         cout << "This item cannot be equipped!\n";
                     }
-                    Platform::setColor(15);
+                    cout << "\033[37m";
                     cout << "Press any key to continue...";
-                    Platform::getch();
+                    getch();
                 }
             }
-        } while (choice != 0);
+        } while (input != 'x');
     }
 
     void addItemToInventory(const Item& item) {
         if (inventory.size() < 16) {
-            inventory.push_back(item);
-            Platform::setColor(10);
+            if (dynamic_cast<const Weapon*>(&item)) {
+                inventory.push_back(new Weapon(dynamic_cast<const Weapon&>(item)));
+            } else if (dynamic_cast<const Armor*>(&item)) {
+                inventory.push_back(new Armor(dynamic_cast<const Armor&>(item)));
+            } else {
+                inventory.push_back(new Item(item));
+            }
+            cout << "\033[91m";
             cout << "Item added to inventory!\n";
-            Platform::setColor(15);
+            cout << "\033[37m";
         } else {
-            Platform::setColor(12);
-            cout << "Inventory is full!\n";
-            Platform::setColor(15);
+            cout << "\033[93m";
+            cout << "Inventory full!\n";
+            cout << "\033[37m";
         }
     }
 
     float getHP() const { return HP; }
     float getGold() const { return gold; }
+    int getLevel() const { return level; }
+
     void spendGold(float amount) { gold -= amount; }
+
+private:
+    static int getch() {
+        struct termios oldt, newt;
+        int ch;
+        tcgetattr(STDIN_FILENO, &oldt);
+        newt = oldt;
+        newt.c_lflag &= ~(ICANON | ECHO);
+        tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+        ch = getchar();
+        tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+        return ch;
+    }
 };
 
+// Klasa dla NPC
 class NPC {
 public:
     string name;
-    vector<Item> shopItems;
+    vector<Item*> shopItems;
 
     NPC(string n) : name(n) {
-        shopItems.push_back(Item("Health Potion", 20.0f, 1, common));
-        shopItems.push_back(Weapon("Steel Sword", 50.0f, 100, uncommon, 15.0f));
-        shopItems.push_back(Armor("Chainmail", 75.0f, 100, uncommon, 10.0f));
+        shopItems.push_back(new Item("Health Potion", 20.0f, 1, common));
+        shopItems.push_back(new Weapon("Steel Sword", 50.0f, 100, uncommon, 15.0f));
+        shopItems.push_back(new Armor("Chainmail", 75.0f, 100, uncommon, 10.0f));
+    }
+
+    ~NPC() {
+        for (auto item : shopItems) {
+            delete item;
+        }
     }
 
     void showShop() const {
-        Platform::setColor(14);
-        cout << "Welcome to " << name << "'s shop!\n";
+        cout << "\033[96m";
+        cout << "Welcome to " << name << "'s Shop!\n";
         cout << "----------------------------\n";
         for (size_t i = 0; i < shopItems.size(); ++i) {
             cout << i + 1 << ". ";
-            shopItems[i].display();
+            shopItems[i]->display();
         }
-        Platform::setColor(15);
+        cout << "\033[37m";
     }
 
     void trade(Player& player) {
         char choice;
         do {
-            Platform::clearScreen();
+            cout << "\033[2J\033[1;1H";
             showShop();
             cout << "\nYour gold: " << player.getGold() << "\n";
             cout << "[1-" << shopItems.size() << "] Buy  [X] Exit\n";
-            choice = Platform::getch();
+            choice = getch();
 
             if (choice >= '1' && choice <= '9') {
                 int itemIndex = choice - '1';
                 if (itemIndex < shopItems.size()) {
-                    if (player.getGold() >= shopItems[itemIndex].getPrice()) {
-                        player.addItemToInventory(shopItems[itemIndex]);
-                        player.spendGold(shopItems[itemIndex].getPrice());
-                        Platform::setColor(10);
+                    if (player.getGold() >= shopItems[itemIndex]->getPrice()) {
+                        player.addItemToInventory(*shopItems[itemIndex]);
+                        player.spendGold(shopItems[itemIndex]->getPrice());
+                        cout << "\033[91m";
                         cout << "Purchase successful!\n";
-                        Platform::setColor(15);
+                        cout << "\033[37m";
                     } else {
-                        Platform::setColor(12);
+                        cout << "\033[93m";
                         cout << "Not enough gold!\n";
-                        Platform::setColor(15);
+                        cout << "\033[37m";
                     }
-                    Platform::getch();
+                    getch();
                 }
             }
         } while (choice != 'x' && choice != 'X');
+        cout << "\033[2J\033[1;1H";
+    }
+
+private:
+    static int getch() {
+        struct termios oldt, newt;
+        int ch;
+        tcgetattr(STDIN_FILENO, &oldt);
+        newt = oldt;
+        newt.c_lflag &= ~(ICANON | ECHO);
+        tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+        ch = getchar();
+        tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+        return ch;
     }
 };
 
+// Klasa dla mapy
 class Map {
 private:
     vector<vector<char>> grid;
@@ -508,7 +470,7 @@ private:
     string location;
 
 public:
-    Map(int s) : size(s), weather(sunny), location("Starting Area") {
+    Map(int s, int level) : size(s), weather(sunny), location("Map Level " + to_string(level)) {
         grid.resize(size, vector<char>(size, '.'));
         playerX = size / 2;
         playerY = size / 2;
@@ -522,10 +484,11 @@ public:
 
     void generateObstacles() {
         obstacles.clear();
-        for (int i = 0; i < size; ++i) {
+        int numObstacles = rand() % size + 5;
+        for (int i = 0; i < numObstacles; ++i) {
             int x = rand() % size;
             int y = rand() % size;
-            if (grid[y][x] == '.') {
+            if (grid[y][x] == '.' && (x != playerX || y != playerY)) {
                 obstacles.push_back({ x, y });
                 grid[y][x] = '#';
             }
@@ -537,7 +500,7 @@ public:
         for (int i = 0; i < 5; ++i) {
             int x = rand() % size;
             int y = rand() % size;
-            if (grid[y][x] == '.') {
+            if (grid[y][x] == '.' && (x != playerX || y != playerY)) {
                 chests.push_back({ x, y });
                 grid[y][x] = 'C';
             }
@@ -549,7 +512,7 @@ public:
         for (int i = 0; i < 5; ++i) {
             int x = rand() % size;
             int y = rand() % size;
-            if (grid[y][x] == '.') {
+            if (grid[y][x] == '.' && (x != playerX || y != playerY)) {
                 enemies.push_back({ x, y });
                 grid[y][x] = 'E';
             }
@@ -561,7 +524,7 @@ public:
         for (int i = 0; i < 2; ++i) {
             int x = rand() % size;
             int y = rand() % size;
-            if (grid[y][x] == '.') {
+            if (grid[y][x] == '.' && (x != playerX || y != playerY)) {
                 npcs.push_back({ x, y });
                 grid[y][x] = 'N';
             }
@@ -569,8 +532,8 @@ public:
     }
 
     void display() const {
-        Platform::setCursorPosition(0, 0);
-        Platform::setColor(11);
+        printf("\033[1;1H");
+        cout << "\033[92m";
         cout << "Location: " << location << "\n";
         cout << "Weather: ";
         switch (weather) {
@@ -579,7 +542,7 @@ public:
         case cloudy: cout << "Cloudy"; break;
         }
         cout << "\n";
-        Platform::setColor(15);
+        cout << "\033[37m";
 
         vector<vector<char>> displayGrid = grid;
 
@@ -600,17 +563,17 @@ public:
 
         for (auto& row : displayGrid) {
             for (char tile : row) {
-                if (tile == 'P') Platform::setColor(10);
-                else if (tile == 'C') Platform::setColor(14);
-                else if (tile == 'E') Platform::setColor(12);
-                else if (tile == 'N') Platform::setColor(11);
-                else if (tile == '#') Platform::setColor(8);
-                else Platform::setColor(15);
+                if (tile == 'P') cout << "\033[91m";
+                else if (tile == 'C') cout << "\033[96m";
+                else if (tile == 'E') cout << "\033[93m";
+                else if (tile == 'N') cout << "\033[92m";
+                else if (tile == '#') cout << "\033[90m";
+                else cout << "\033[37m";
                 cout << tile << " ";
             }
             cout << endl;
         }
-        Platform::setColor(15);
+        cout << "\033[37m";
     }
 
     void movePlayer(char direction) {
@@ -630,18 +593,6 @@ public:
             playerY = newY;
             grid[playerY][playerX] = 'P';
         }
-
-        if (playerX == 0 || playerX == size - 1 || playerY == 0 || playerY == size - 1) {
-            generateNewTerrain();
-        }
-    }
-
-    void generateNewTerrain() {
-        location = "New Area";
-        generateObstacles();
-        generateChests();
-        generateEnemies();
-        generateNPCs();
     }
 
     bool isNearChest(int& chestX, int& chestY) const {
@@ -697,90 +648,128 @@ public:
         }
     }
 
-    void removeNPC(int x, int y) {
-        for (auto it = npcs.begin(); it != npcs.end(); ++it) {
-            if (it->first == x && it->second == y) {
-                npcs.erase(it);
-                grid[y][x] = '.';
-                break;
-            }
-        }
-    }
-
     void changeWeather() {
-        weather = static_cast<Weather>((rand() % 3));
+        weather = static_cast<Weather>(rand() % 3);
     }
 };
 
+// Funkcja do sprawdzania naci艣ni臋cia klawisza
+static bool kbhit() {
+    struct termios oldt, newt;
+    int ch;
+    int oldf;
+
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    oldf = fcntl(STDIN_FILENO, F_GETFL, 0);
+    fcntl(STDIN_FILENO, F_SETFL, oldf | O_NONBLOCK);
+
+    ch = getchar();
+
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+    fcntl(STDIN_FILENO, F_SETFL, oldf);
+
+    if (ch != EOF) {
+        ungetc(ch, stdin);
+        return true;
+    }
+
+    return false;
+}
+
+// Funkcja do odczytu pojedynczego znaku
+static int getch() {
+    struct termios oldt, newt;
+    int ch;
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    ch = getchar();
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+    return ch;
+}
+
+// G艂贸wna funkcja gry
 int main() {
+    struct termios oldt, newt;
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+
     srand(time(0));
-    Map gameMap(10);
     Player player("Hero");
     NPC npc("Merchant");
-
-    Platform::hideCursor();
+    Map gameMap(10, player.getLevel());
+    int currentLevel = player.getLevel();
 
     while (player.getHP() > 0) {
+        if (player.getLevel() > currentLevel) {
+            gameMap = Map(10, player.getLevel());
+            currentLevel = player.getLevel();
+            cout << "\033[96m";
+            cout << "New map generated for level " << currentLevel << "!\n";
+            cout << "\033[37m";
+            this_thread::sleep_for(chrono::seconds(2));
+        }
+
         gameMap.display();
         player.showStats();
-        cout << "Move (W/A/S/D), fight (F), loot (L), trade (T), inventory (I): ";
+        cout << "Move (W/A/S/D), Fight (F), Loot (L), Trade (T), Inventory (I): ";
+        cout.flush();
 
-        if (Platform::kbhit()) {
-            char input = Platform::getch();
+        if (kbhit()) {
+            char input = getch();
             int x, y;
 
             if (input == 'f' || input == 'F') {
                 if (gameMap.isNearEnemy(x, y)) {
-                    Enemy enemy("Goblin", 30.0f, 5.0f, 50);
+                    Enemy enemy("Goblin", 30.0f, 5.0f);
                     player.attack(enemy);
                     if (enemy.HP <= 0) {
                         gameMap.removeEnemy(x, y);
                     }
-                }
-                else {
-                    Platform::setColor(12);
+                } else {
+                    cout << "\033[93m";
                     cout << "No enemy nearby!\n";
-                    Platform::setColor(15);
+                    cout << "\033[37m";
                 }
-            }
-            else if (input == 'l' || input == 'L') {
+            } else if (input == 'l' || input == 'L') {
                 if (gameMap.isNearChest(x, y)) {
                     player.lootChest();
                     gameMap.removeChest(x, y);
-                }
-                else {
-                    Platform::setColor(12);
+                } else {
+                    cout << "\033[93m";
                     cout << "No chest nearby!\n";
-                    Platform::setColor(15);
+                    cout << "\033[37m";
                 }
-            }
-            else if (input == 't' || input == 'T') {
+            } else if (input == 't' || input == 'T') {
                 if (gameMap.isNearNPC(x, y)) {
                     npc.trade(player);
-                }
-                else {
-                    Platform::setColor(12);
+                } else {
+                    cout << "\033[93m";
                     cout << "No NPC nearby!\n";
-                    Platform::setColor(15);
+                    cout << "\033[37m";
                 }
-            }
-            else if (input == 'i' || input == 'I') {
+            } else if (input == 'i' || input == 'I') {
                 char inventoryChoice;
                 do {
-                    player.showInventoryGrid();
-                    inventoryChoice = Platform::getch();
+                    player.showInventoryGridWithCursor(0, 0);
+                    inventoryChoice = getch();
 
                     switch(tolower(inventoryChoice)) {
-                        case 'i':
-                            player.inspectItem();
-                            break;
-                        case 'e':
-                            player.equipFromInventory();
-                            break;
+                    case 'i':
+                        player.inspectItem();
+                        break;
+                    case 'e':
+                        player.equipFromInventory();
+                        break;
                     }
                 } while (tolower(inventoryChoice) != 'x');
-            }
-            else {
+            } else {
                 gameMap.movePlayer(input);
             }
         }
@@ -788,8 +777,10 @@ int main() {
         this_thread::sleep_for(chrono::milliseconds(100));
     }
 
-    Platform::setColor(12);
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+
+    cout << "\033[93m";
     cout << "Game Over!" << endl;
-    Platform::setColor(15);
+    cout << "\033[37m";
     return 0;
 }

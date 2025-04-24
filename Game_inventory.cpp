@@ -9,6 +9,7 @@
 #include <map>
 #include <functional>
 #include <iomanip>
+#include <random>
 
 #ifdef _WIN32
 #include <conio.h>
@@ -17,14 +18,13 @@
 #include <unistd.h>
 #include <fcntl.h>
 #endif
-
 using namespace std;
 
 // Wyliczenia dla rzadkości przedmiotów i pogody
 enum Rarities { common, uncommon, magic, rare, legendary };
 enum Weather { sunny, rainy, cloudy };
 
-// Obsługa wejścia w systemach Windows i Unix
+// Obsługa wejścia w systemach Windows
 #ifdef _WIN32
 int getch() { return _getch(); }
 int kbhit() { return _kbhit(); }
@@ -328,7 +328,7 @@ public:
         if (experience >= nextLevelExp) levelUp();
     }
 
-    // Awans na kolejny poziom
+    // Awans na nextLevelExp
     void levelUp() {
         level++;
         experience -= nextLevelExp;
@@ -438,7 +438,7 @@ public:
             cout << "\n  +---+---+---+---+\n";
         }
         cout << "\033[37m";
-        cout << "\n[I] Inspect  [E] Equip  [U] Use  [S] Sort  [X] Exit\n";
+        cout << "\n[I] Inspect  [E] Equip  [U] Use  [Q] Drop  [C] Sort  [X] Exit\n";
     }
 
     // Inspekcja przedmiotów w ekwipunku
@@ -507,6 +507,43 @@ public:
                         inventory.erase(inventory.begin() + index);
                     }
 
+                    cout << "\033[37mPress any key to continue...";
+                    getch();
+                } else {
+                    cout << "\033[33mNo item in this slot!\n\033[37m";
+                    this_thread::sleep_for(chrono::seconds(1));
+                }
+            }
+        } while (input != 'x');
+    }
+
+    // Usuwanie przedmiotów z ekwipunku
+    void dropItemFromInventory() {
+        if (inventory.empty()) {
+            cout << "\033[33mNo items to drop!\n\033[37m";
+            this_thread::sleep_for(chrono::seconds(1));
+            return;
+        }
+
+        int cursorRow = 0, cursorCol = 0;
+        char input;
+        do {
+            cout << "\033[2J\033[1;1H";
+            showInventoryGridWithCursor(cursorRow, cursorCol);
+            input = tolower(getch());
+
+            if (input == 'w' && cursorRow > 0) cursorRow--;
+            if (input == 's' && cursorRow < 3) cursorRow++;
+            if (input == 'a' && cursorCol > 0) cursorCol--;
+            if (input == 'd' && cursorCol < 3) cursorCol++;
+
+            if (input == 'q') {
+                int index = cursorRow * 4 + cursorCol;
+                if (index < inventory.size()) {
+                    cout << "\033[2J\033[1;1H";
+                    cout << "\033[33mDropped " << inventory[index]->getName() << "!\n";
+                    delete inventory[index];
+                    inventory.erase(inventory.begin() + index);
                     cout << "\033[37mPress any key to continue...";
                     getch();
                 } else {
@@ -647,7 +684,7 @@ public:
         int itemsToAdd = min(static_cast<int>(filteredItems.size()), 2 + playerLevel / 2);
 
         // Losowo wybierz przedmioty z filtrowanej puli
-        random_shuffle(filteredItems.begin(), filteredItems.end());
+        std::shuffle(filteredItems.begin(), filteredItems.end(), std::default_random_engine(std::random_device()()));
         for (int i = 0; i < itemsToAdd && i < filteredItems.size(); ++i) {
             shopItems.push_back(filteredItems[i]);
         }
@@ -992,7 +1029,8 @@ int main() {
                 case 'i': player.inspectItem(); break;
                 case 'e': player.equipFromInventory(); break;
                 case 'u': player.useItemFromInventory(); break;
-                case 's': player.sortInventory(); break;
+                case 'q': player.dropItemFromInventory(); break;
+                case 'c': player.sortInventory(); break;
                 }
             } while (inventoryChoice != 'x');
         } else if (input == 'w' || input == 'a' || input == 's' || input == 'd') {

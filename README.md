@@ -29,7 +29,8 @@ A simple text-based role-playing game (RPG) written in C++. The game features a 
   - `I`: Inspect item.
   - `E`: Equip weapon or armor.
   - `U`: Use item (e.g., health potion).
-  - `S`: Sort inventory by rarity.
+  - `Q`: Drop item.
+  - `C`: Sort inventory by rarity.
   - `X`: Exit inventory.
 - **Shop**: When trading (`T`):
   - `1`–`N`: Select item to buy.

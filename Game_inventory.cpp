@@ -65,6 +65,9 @@ bool kbhit() {
 }
 #endif
 
+// Forward declaration of Player
+class Player;
+
 // Bazowa klasa dla przedmiotów
 class Item {
 protected:
@@ -93,7 +96,7 @@ public:
         cout << ", Favorite: " << (isFavorite ? "Yes" : "No") << ")\n";
     }
 
-    virtual void use(class Player& player) {
+    virtual void use(Player& player) {
         cout << "\033[31mThis item cannot be used directly!\n\033[37m";
     }
 
@@ -120,14 +123,12 @@ public:
         }
     }
 
-    // Serializacja przedmiotu do zapisu
     virtual string serialize() const {
         stringstream ss;
         ss << "Item|" << name << "|" << price << "|" << durability << "|" << rarity << "|" << isFavorite;
         return ss.str();
     }
 
-    // Deserializacja przedmiotu
     static Item* deserialize(const string& data);
 };
 
@@ -138,7 +139,7 @@ private:
 public:
     HealthPotion() : Item("Health Potion", 20.0f, 1, common), healAmount(30.0f) {}
 
-    void use(Player& player) override;
+    void use(Player& player) override; // Declare here, define after Player
 
     void display() const override {
         cout << left << setw(20) << name;
@@ -349,8 +350,7 @@ public:
     }
 };
 
-// Klasa Player
-
+// Klasa dla gracza
 class Player {
 private:
     string name;
@@ -366,14 +366,12 @@ private:
     map<string, int> stats;
 
 public:
-    // Konstruktor z parametrem kontrolującym dodawanie początkowych przedmiotów
     Player(string n, bool addInitialItems = true) : name(n), HP(100.0f), maxHP(100.0f), gold(100.0f), level(1), experience(0), nextLevelExp(100) {
         stats["strength"] = 10;
         stats["agility"] = 10;
         stats["intelligence"] = 10;
 
         if (addInitialItems) {
-            // Dodaj początkowe przedmioty tylko dla nowego gracza
             inventory.push_back(new Weapon("Basic Sword", 50.0f, 100, common, 20.0f, 2));
             inventory.push_back(new Armor("Basic Armor", 60.0f, 100, common, 5.0f, 2));
             inventory.push_back(new HealthPotion());
@@ -474,7 +472,7 @@ public:
         this_thread::sleep_for(chrono::seconds(1));
     }
 
-    void showInventoryGridWithCursor(int cursorRow, int cursorCol) const {
+    void showInventoryGridWithCursor(int cursorRow, int cursorCol, bool isMoving = false, int selectedIndex = -1) const {
         cout << "\033[36m";
         cout << "=== INVENTORY (4x4) ===\n";
         cout << "Gold: " << gold << "\n\n";
@@ -513,21 +511,27 @@ public:
             cout << "\n  +---+---+---+---+\n";
         }
         cout << "\033[37m";
+        if (isMoving && selectedIndex >= 0 && selectedIndex < inventory.size()) {
+            cout << "\033[36mMoving " << inventory[selectedIndex]->getName() << ". Press [M] to place or [X] to cancel.\n";
+        }
         cout << "\n[I] Inspect  [E] Equip  [U] Use  [Q] Drop  [C] Sort  [M] Move  [X] Exit\n";
     }
 
-    void inspectItem() {
+    void manageInventory() {
         if (inventory.empty()) {
-            cout << "\033[33mNo items to inspect!\n\033[37m";
+            cout << "\033[33mInventory is empty!\n\033[37m";
             this_thread::sleep_for(chrono::seconds(1));
             return;
         }
 
         int cursorRow = 0, cursorCol = 0;
+        bool isMoving = false;
+        int selectedIndex = -1;
         char input;
-        do {
+
+        while (true) {
             cout << "\033[2J\033[1;1H";
-            showInventoryGridWithCursor(cursorRow, cursorCol);
+            showInventoryGridWithCursor(cursorRow, cursorCol, isMoving, selectedIndex);
             input = tolower(getch());
 
             if (input == 'w' && cursorRow > 0) cursorRow--;
@@ -553,118 +557,7 @@ public:
                     cout << "\033[33mNo item in this slot!\n\033[37m";
                     this_thread::sleep_for(chrono::seconds(1));
                 }
-            }
-        } while (input != 'x');
-    }
-
-    void useItemFromInventory() {
-        if (inventory.empty()) {
-            cout << "\033[33mNo items to use!\n\033[37m";
-            this_thread::sleep_for(chrono::seconds(1));
-            return;
-        }
-
-        int cursorRow = 0, cursorCol = 0;
-        char input;
-        do {
-            cout << "\033[2J\033[1;1H";
-            showInventoryGridWithCursor(cursorRow, cursorCol);
-            input = tolower(getch());
-
-            if (input == 'w' && cursorRow > 0) cursorRow--;
-            if (input == 's' && cursorRow < 3) cursorRow++;
-            if (input == 'a' && cursorCol > 0) cursorCol--;
-            if (input == 'd' && cursorCol < 3) cursorCol++;
-
-            if (input == 'u') {
-                int index = cursorRow * 4 + cursorCol;
-                if (index < inventory.size()) {
-                    cout << "\033[2J\033[1;1H";
-                    inventory[index]->use(*this);
-
-                    if (inventory[index]->getDurability() <= 0) {
-                        delete inventory[index];
-                        inventory.erase(inventory.begin() + index);
-                    }
-
-                    cout << "\033[37mPress any key to continue...";
-                    getch();
-                } else {
-                    cout << "\033[33mNo item in this slot!\n\033[37m";
-                    this_thread::sleep_for(chrono::seconds(1));
-                }
-            }
-        } while (input != 'x');
-    }
-
-    void dropItemFromInventory() {
-        if (inventory.empty()) {
-            cout << "\033[33mNo items to drop!\n\033[37m";
-            this_thread::sleep_for(chrono::seconds(1));
-            return;
-        }
-
-        int cursorRow = 0, cursorCol = 0;
-        char input;
-        do {
-            cout << "\033[2J\033[1;1H";
-            showInventoryGridWithCursor(cursorRow, cursorCol);
-            input = tolower(getch());
-
-            if (input == 'w' && cursorRow > 0) cursorRow--;
-            if (input == 's' && cursorRow < 3) cursorRow++;
-            if (input == 'a' && cursorCol > 0) cursorCol--;
-            if (input == 'd' && cursorCol < 3) cursorCol++;
-
-            if (input == 'q') {
-                int index = cursorRow * 4 + cursorCol;
-                if (index < inventory.size()) {
-                    if (inventory[index]->getIsFavorite()) {
-                        cout << "\033[33mCannot drop favorite items!\n\033[37m";
-                    } else {
-                        cout << "\033[2J\033[1;1H";
-                        cout << "\033[33mDropped " << inventory[index]->getName() << "!\n";
-                        delete inventory[index];
-                        inventory.erase(inventory.begin() + index);
-                    }
-                    cout << "\033[37mPress any key to continue...";
-                    getch();
-                } else {
-                    cout << "\033[33mNo item in this slot!\n\033[37m";
-                    this_thread::sleep_for(chrono::seconds(1));
-                }
-            }
-        } while (input != 'x');
-    }
-
-    void sortInventory() {
-        sort(inventory.begin(), inventory.end(), [](const Item* a, const Item* b) {
-            return a->getRarity() > b->getRarity();
-        });
-        cout << "\033[32mInventory sorted by rarity!\n\033[37m";
-        this_thread::sleep_for(chrono::seconds(1));
-    }
-
-    void equipFromInventory() {
-        if (inventory.empty()) {
-            cout << "\033[33mNo items to equip!\n\033[37m";
-            this_thread::sleep_for(chrono::seconds(1));
-            return;
-        }
-
-        int cursorRow = 0, cursorCol = 0;
-        char input;
-        do {
-            cout << "\033[2J\033[1;1H";
-            showInventoryGridWithCursor(cursorRow, cursorCol);
-            input = tolower(getch());
-
-            if (input == 'w' && cursorRow > 0) cursorRow--;
-            if (input == 's' && cursorRow < 3) cursorRow++;
-            if (input == 'a' && cursorCol > 0) cursorCol--;
-            if (input == 'd' && cursorCol < 3) cursorCol++;
-
-            if (input == 'e') {
+            } else if (input == 'e') {
                 int index = cursorRow * 4 + cursorCol;
                 if (index < inventory.size()) {
                     Item* item = inventory[index];
@@ -687,68 +580,82 @@ public:
                     cout << "\033[33mNo item in this slot!\n\033[37m";
                     this_thread::sleep_for(chrono::seconds(1));
                 }
-            }
-        } while (input != 'x');
-    }
-
-    void moveItemInInventory() {
-        if (inventory.empty()) {
-            cout << "\033[33mNo items to move!\n\033[37m";
-            this_thread::sleep_for(chrono::seconds(1));
-            return;
-        }
-
-        int cursorRow = 0, cursorCol = 0;
-        int selectedIndex = -1;
-        char input;
-        bool isMoving = false;
-
-        do {
-            cout << "\033[2J\033[1;1H";
-            showInventoryGridWithCursor(cursorRow, cursorCol);
-            if (isMoving) {
-                cout << "\033[36mMoving " << inventory[selectedIndex]->getName() << ". Press [M] to place or [X] to cancel.\n";
-            }
-            input = tolower(getch());
-
-            if (input == 'w' && cursorRow > 0) cursorRow--;
-            if (input == 's' && cursorRow < 3) cursorRow++;
-            if (input == 'a' && cursorCol > 0) cursorCol--;
-            if (input == 'd' && cursorCol < 3) cursorCol++;
-
-            if (input == 'm' && !isMoving) {
+            } else if (input == 'u') {
                 int index = cursorRow * 4 + cursorCol;
                 if (index < inventory.size()) {
-                    selectedIndex = index;
-                    isMoving = true;
-                    cout << "\033[32mSelected " << inventory[selectedIndex]->getName() << " to move.\n";
+                    inventory[index]->use(*this);
+                    if (inventory[index]->getDurability() <= 0) {
+                        delete inventory[index];
+                        inventory.erase(inventory.begin() + index);
+                    }
+                    cout << "\033[37mPress any key to continue...";
+                    getch();
                 } else {
                     cout << "\033[33mNo item in this slot!\n\033[37m";
                     this_thread::sleep_for(chrono::seconds(1));
                 }
-            } else if (input == 'm' && isMoving) {
-                int targetIndex = cursorRow * 4 + cursorCol;
-                if (targetIndex >= 0 && targetIndex < 16) {
-                    if (targetIndex < inventory.size()) {
-                        swap(inventory[selectedIndex], inventory[targetIndex]);
-                        cout << "\033[32mSwapped " << inventory[targetIndex]->getName() << " with "
-                             << inventory[selectedIndex]->getName() << "!\n";
+            } else if (input == 'q') {
+                int index = cursorRow * 4 + cursorCol;
+                if (index < inventory.size()) {
+                    if (inventory[index]->getIsFavorite()) {
+                        cout << "\033[33mCannot drop favorite items!\n\033[37m";
                     } else {
-                        inventory.push_back(inventory[selectedIndex]);
-                        inventory.erase(inventory.begin() + selectedIndex);
-                        cout << "\033[32mMoved " << inventory.back()->getName() << " to new slot!\n";
+                        cout << "\033[33mDropped " << inventory[index]->getName() << "!\n";
+                        delete inventory[index];
+                        inventory.erase(inventory.begin() + index);
                     }
-                    isMoving = false;
                     cout << "\033[37mPress any key to continue...";
                     getch();
                 } else {
-                    cout << "\033[33mInvalid target slot!\n\033[37m";
+                    cout << "\033[33mNo item in this slot!\n\033[37m";
+                    this_thread::sleep_for(chrono::seconds(1));
+                }
+            } else if (input == 'c') {
+                sort(inventory.begin(), inventory.end(), [](const Item* a, const Item* b) {
+                    return a->getRarity() > b->getRarity();
+                });
+                cout << "\033[32mInventory sorted by rarity!\n\033[37m";
+                this_thread::sleep_for(chrono::seconds(1));
+            } else if (input == 'm') {
+                int index = cursorRow * 4 + cursorCol;
+                if (!isMoving && index < inventory.size()) {
+                    selectedIndex = index;
+                    isMoving = true;
+                    cout << "\033[32mSelected " << inventory[selectedIndex]->getName() << " to move.\n";
+                    this_thread::sleep_for(chrono::seconds(1));
+                } else if (isMoving) {
+                    int targetIndex = cursorRow * 4 + cursorCol;
+                    if (targetIndex >= 0 && targetIndex < 16) {
+                        if (targetIndex < inventory.size()) {
+                            swap(inventory[selectedIndex], inventory[targetIndex]);
+                            cout << "\033[32mSwapped " << inventory[targetIndex]->getName() << " with "
+                                 << inventory[selectedIndex]->getName() << "!\n";
+                        } else {
+                            inventory.push_back(inventory[selectedIndex]);
+                            inventory.erase(inventory.begin() + selectedIndex);
+                            cout << "\033[32mMoved " << inventory.back()->getName() << " to new slot!\n";
+                        }
+                        isMoving = false;
+                        cout << "\033[37mPress any key to continue...";
+                        getch();
+                    } else {
+                        cout << "\033[33mInvalid target slot!\n\033[37m";
+                        this_thread::sleep_for(chrono::seconds(1));
+                    }
+                } else {
+                    cout << "\033[33mNo item in this slot!\n\033[37m";
                     this_thread::sleep_for(chrono::seconds(1));
                 }
             } else if (input == 'x') {
-                isMoving = false;
+                if (isMoving) {
+                    isMoving = false;
+                    cout << "\033[33mMove canceled.\n\033[37m";
+                    this_thread::sleep_for(chrono::seconds(1));
+                } else {
+                    break;
+                }
             }
-        } while (input != 'x' || isMoving);
+        }
     }
 
     void addItemToInventory(Item* item) {
@@ -768,7 +675,6 @@ public:
     int getLevel() const { return level; }
     string getName() const { return name; }
 
-    // Zapis stanu gracza do pliku
     void saveToFile() const {
         fs::create_directory("saves");
         string filename = "saves/player_" + name + ".txt";
@@ -806,7 +712,6 @@ public:
         cout << "\033[32mGame saved successfully!\n\033[37m";
     }
 
-    // Wczytanie stanu gracza z pliku
     static Player* loadFromFile(const string& playerName) {
         string filename = "saves/player_" + playerName + ".txt";
         ifstream file(filename);
@@ -814,12 +719,10 @@ public:
             return nullptr;
         }
 
-        // Utwórz gracza bez początkowych przedmiotów
         Player* player = new Player(playerName, false);
         string line;
         string section;
 
-        // Wyczyść domyślny ekwipunek, broń i zbroję
         for (auto item : player->inventory) delete item;
         player->inventory.clear();
         player->stats["strength"] -= player->weapon.getStrengthBonus();
@@ -885,116 +788,86 @@ public:
     }
 };
 
-// Definicja metody use dla HealthPotion
+// Implementacja HealthPotion::use po definicji klasy Player
 void HealthPotion::use(Player& player) {
     player.heal(healAmount);
     durability--;
-    if (durability <= 0) {
-        cout << "\033[31mPotion used up!\n\033[37m"; // Fixed: Changed coutFIT to cout
-    }
 }
-// Klasa dla NPC (sprzedawcy)
+
+// Klasa dla NPC
 class NPC {
-public:
+private:
     string name;
-    vector<Item*> shopItems;
+    vector<Item*> inventory;
+    int level;
 
-    NPC(string n, int playerLevel) : name(n) {
-        shopItems.push_back(new HealthPotion());
-        vector<Item*> itemPool = {
-            new Weapon("Basic Sword", 50.0f, 100, common, 20.0f, 2),
-            new Armor("Basic Armor", 60.0f, 100, common, 5.0f, 2),
-            new Weapon("Iron Sword", 100.0f, 120, uncommon, 25.0f, 4),
-            new Armor("Leather Armor", 120.0f, 120, uncommon, 8.0f, 4),
-            new Weapon("Magic Staff", 200.0f, 150, magic, 30.0f, 6),
-            new Armor("Chainmail", 220.0f, 150, magic, 12.0f, 6),
-            new Weapon("Dragon Blade", 350.0f, 200, rare, 40.0f, 8),
-            new Armor("Plate Armor", 370.0f, 200, rare, 18.0f, 8),
-            new Weapon("Godslayer", 500.0f, 300, legendary, 50.0f, 10),
-            new Armor("Mythril Armor", 520.0f, 300, legendary, 25.0f, 10)
-        };
-
-        vector<Item*> filteredItems;
-        for (auto item : itemPool) {
-            if (playerLevel <= 2 && (item->getRarity() <= uncommon)) {
-                filteredItems.push_back(item);
-            } else if (playerLevel <= 4 && (item->getRarity() <= magic)) {
-                filteredItems.push_back(item);
-            } else if (playerLevel >= 5) {
-                filteredItems.push_back(item);
-            } else {
-                delete item;
-            }
-        }
-
-        int itemsToAdd = min(static_cast<int>(filteredItems.size()), 2 + playerLevel / 2);
-        std::shuffle(filteredItems.begin(), filteredItems.end(), std::default_random_engine(std::random_device()()));
-        for (int i = 0; i < itemsToAdd && i < filteredItems.size(); ++i) {
-            shopItems.push_back(filteredItems[i]);
-        }
-
-        for (size_t i = itemsToAdd; i < filteredItems.size(); ++i) {
-            delete filteredItems[i];
-        }
+public:
+    NPC(string n, int lvl) : name(n), level(lvl) {
+        generateInventory();
     }
 
     ~NPC() {
-        for (auto item : shopItems) delete item;
+        for (auto item : inventory) delete item;
     }
 
-    void showShop() const {
-        cout << "\033[2J\033[1;1H\033[36m";
-        cout << "=== Welcome to " << name << "'s Shop ===\n\033[37m";
-        cout << left;
-        cout << setw(4) << "No" << setw(20) << "Item" << setw(12) << "Rarity" << setw(8) << "Price" << setw(20) << "Stats" << "\n";
-        cout << string(64, '-') << "\n";
-
-        for (size_t i = 0; i < shopItems.size(); ++i) {
-            cout << setw(4) << (i + 1) << ".";
-            shopItems[i]->display();
-            cout << "\n";
+    void generateInventory() {
+        for (int i = 0; i < 5; ++i) {
+            int itemType = rand() % 10;
+            Item* newItem = nullptr;
+            switch (itemType) {
+            case 0: newItem = new HealthPotion(); break;
+            case 1: newItem = new Weapon("Iron Sword", 100.0f, 120, uncommon, 25.0f, 4); break;
+            case 2: newItem = new Armor("Leather Armor", 120.0f, 120, uncommon, 8.0f, 4); break;
+            case 3: newItem = new Weapon("Magic Staff", 200.0f, 150, magic, 30.0f, 6); break;
+            case 4: newItem = new Armor("Chainmail", 220.0f, 150, magic, 12.0f, 6); break;
+            case 5: newItem = new Weapon("Dragon Blade", 350.0f, 200, rare, 40.0f, 8); break;
+            case 6: newItem = new Armor("Plate Armor", 370.0f, 200, rare, 18.0f, 8); break;
+            case 7: newItem = new Weapon("Godslayer", 500.0f, 300, legendary, 50.0f, 10); break;
+            case 8: newItem = new Armor("Mythril Armor", 520.0f, 300, legendary, 25.0f, 10); break;
+            case 9: newItem = new Item("Junk", 5.0f, 1, common); break;
+            }
+            if (newItem) inventory.push_back(newItem);
         }
-
-        cout << string(64, '-') << "\n\033[37m";
     }
 
     void trade(Player& player) {
-        char choice;
-        do {
-            showShop();
-            cout << "\nYour gold: " << fixed << setprecision(1) << player.getGold() << "g\n";
-            cout << "Select item [1-" << shopItems.size() << "] or [X] to exit: ";
-            choice = getch();
+        while (true) {
+            cout << "\033[2J\033[1;1H\033[36m";
+            cout << "=== Trading with " << name << " ===\n";
+            cout << "Your gold: " << player.getGold() << "\n\n";
+            cout << "Merchant's Inventory:\n";
+            for (size_t i = 0; i < inventory.size(); ++i) {
+                cout << "[" << (i + 1) << "] ";
+                inventory[i]->display();
+                cout << "\n";
+            }
+            cout << "\n[B] Buy  [X] Exit\n";
+            char choice = tolower(getch());
 
-            if (choice >= '1' && choice <= '0' + shopItems.size()) {
-                int itemIndex = choice - '1';
-                if (player.getGold() >= shopItems[itemIndex]->getPrice()) {
-                    player.spendGold(shopItems[itemIndex]->getPrice());
-
-                    Item* newItem = nullptr;
-                    if (dynamic_cast<HealthPotion*>(shopItems[itemIndex])) {
-                        newItem = new HealthPotion();
-                    } else if (Weapon* weaponPtr = dynamic_cast<Weapon*>(shopItems[itemIndex])) {
-                        newItem = new Weapon(*weaponPtr);
-                    } else if (Armor* armorPtr = dynamic_cast<Armor*>(shopItems[itemIndex])) {
-                        newItem = new Armor(*armorPtr);
+            if (choice == 'b') {
+                cout << "\033[2J\033[1;1H\033[36mEnter item number to buy (1-" << inventory.size() << "): \033[37m";
+                int itemIndex;
+                cin >> itemIndex;
+                if (itemIndex >= 1 && itemIndex <= static_cast<int>(inventory.size())) {
+                    Item* item = inventory[itemIndex - 1];
+                    if (player.getGold() >= item->getPrice()) {
+                        player.spendGold(item->getPrice());
+                        player.addItemToInventory(item); // Moved after gold check and deduction
+                        inventory.erase(inventory.begin() + (itemIndex - 1));
+                        cout << "\033[32mPurchased " << item->getName() << "!\n\033[37m";
                     } else {
-                        newItem = new Item(*shopItems[itemIndex]);
+                        cout << "\033[33mNot enough gold!\n\033[37m";
                     }
-
-                    player.addItemToInventory(newItem);
-                    cout << "\033[32mPurchase successful!\n\033[37m";
                 } else {
-                    cout << "\033[33mNot enough gold!\n\033[37m";
+                    cout << "\033[33mInvalid item number!\n\033[37m";
                 }
                 cout << "Press any key to continue...";
+                cin.ignore();
                 getch();
-            } else if (choice != 'x' && choice != 'X') {
-                cout << "\033[33mInvalid choice!\n\033[37m";
-                cout << "Press any key to continue...";
-                getch();
+            } else if (choice == 'x') {
+                break;
             }
-        } while (choice != 'x' && choice != 'X');
+        }
     }
 };
 
@@ -1172,7 +1045,7 @@ public:
         for (auto it = enemies.begin(); it != enemies.end(); ++it) {
             if (it->x == x && it->y == y) {
                 enemies.erase(it);
-                grid[y][x] = '.'; // Fixed: Corrected syntax from '. to '.'
+                grid[y][x] = '.';
                 return true;
             }
         }
@@ -1239,15 +1112,15 @@ vector<string> getSavedPlayers() {
     fs::create_directory("saves");
     for (const auto& entry : fs::directory_iterator("saves")) {
         string filename = entry.path().filename().string();
-        // Sprawdź, czy nazwa pliku zaczyna się na "player_" i kończy na ".txt"
         if (filename.rfind("player_", 0) == 0 && filename.size() >= 4 && filename.substr(filename.size() - 4) == ".txt") {
-            string playerName = filename.substr(7, filename.size() - 11); // Usuń "player_" i ".txt"
+            string playerName = filename.substr(7, filename.size() - 11);
             playerNames.push_back(playerName);
         }
     }
     sort(playerNames.begin(), playerNames.end());
     return playerNames;
 }
+
 // Główna funkcja gry
 int main() {
 #ifdef _WIN32
@@ -1258,12 +1131,10 @@ int main() {
 
     srand(time(0));
 
-    // Wyświetl ekran powitalny
     vector<string> playerNames = getSavedPlayers();
     string selectedPlayer;
     displayWelcomeScreen(playerNames, selectedPlayer);
 
-    // Wczytaj lub utwórz gracza
     Player* player = Player::loadFromFile(selectedPlayer);
     if (!player) {
         player = new Player(selectedPlayer);
@@ -1280,7 +1151,6 @@ int main() {
     int actionCounter = 0;
     const int AUTOSAVE_FREQUENCY = 10;
 
-    // Główna pętla gry
     while (player->getHP() > 0) {
         if (player->getLevel() > currentLevel) {
             gameMap = Map(player->getLevel());
@@ -1292,15 +1162,20 @@ int main() {
         cout << "\033[2J\033[1;1H";
         gameMap.display();
         player->showStats();
-        cout << "Move (W/A/S/D), Fight (F), Loot (L), Trade (T), Inventory (I), Save (V): ";
+        cout << "Move (W/A/S/D), Fight (F), Loot (L), Trade (T), Inventory (I), Save (V), Quit (Q): ";
 
         char input = tolower(getch());
         int x, y;
 
         bool actionPerformed = false;
 
-        if (input == 'v') {
+        if (input == 'q') {
+            cout << "\033[33mQuitting game...\n\033[37m";
             player->saveToFile();
+            break;
+        } else if (input == 'v') {
+            player->saveToFile();
+            actionPerformed = true;
             this_thread::sleep_for(chrono::seconds(1));
         } else if (input == 'f') {
             Enemy* enemy = gameMap.getNearbyEnemy();
@@ -1334,23 +1209,14 @@ int main() {
                 this_thread::sleep_for(chrono::seconds(1));
             }
         } else if (input == 'i') {
-            char inventoryChoice;
-            do {
-                cout << "\033[2J\033[1;1H";
-                player->showInventoryGridWithCursor(0, 0);
-                inventoryChoice = tolower(getch());
-                switch (inventoryChoice) {
-                case 'i': player->inspectItem(); actionPerformed = true; break;
-                case 'e': player->equipFromInventory(); actionPerformed = true; break;
-                case 'u': player->useItemFromInventory(); actionPerformed = true; break;
-                case 'q': player->dropItemFromInventory(); actionPerformed = true; break;
-                case 'c': player->sortInventory(); actionPerformed = true; break;
-                case 'm': player->moveItemInInventory(); actionPerformed = true; break;
-                }
-            } while (inventoryChoice != 'x');
+            player->manageInventory();
+            actionPerformed = true;
         } else if (input == 'w' || input == 'a' || input == 's' || input == 'd') {
             gameMap.movePlayer(input);
             actionPerformed = true;
+        } else {
+            cout << "\033[33mInvalid input!\n\033[37m";
+            this_thread::sleep_for(chrono::seconds(1));
         }
 
         if (actionPerformed) {
@@ -1364,13 +1230,13 @@ int main() {
         if (++weatherChangeCounter % 10 == 0) gameMap.changeWeather();
     }
 
-    cout << "\033[2J\033[1;1H\033[31m";
-    cout << "Game Over! Your hero has fallen.\n";
-    cout << "\033[37m";
+    if (player->getHP() <= 0) {
+        cout << "\033[2J\033[1;1H\033[31m";
+        cout << "Game Over! Your hero has fallen.\n";
+        cout << "\033[37m";
+        player->saveToFile();
+    }
 
-    // Zapisz grę po śmierci
-    player->saveToFile();
     delete player;
-
     return 0;
 }

@@ -70,10 +70,17 @@ protected:
     float price;        // Cena w złocie
     int durability;     // Trwałość przedmiotu
     Rarities rarity;    // Rzadkość przedmiotu
+    bool isFavorite;    // Czy przedmiot jest ulubiony
 public:
-    Item() : name("Scrap"), price(0.1f), durability(100), rarity(common) {}
+    // Konstruktor domyślny
+    Item() : name("Scrap"), price(0.1f), durability(100), rarity(common), isFavorite(false) {}
+
+    // Konstruktor z parametrami
     Item(string name, float price, int durability, Rarities rarity)
-        : name(name), price(price), durability(durability), rarity(rarity) {}
+        : name(name), price(price), durability(durability), rarity(rarity), isFavorite(false) {}
+
+    // Wirtualny destruktor dla poprawnego zwalniania pamięci w klasach pochodnych
+    virtual ~Item() {}
 
     // Wyświetlanie szczegółów przedmiotu podczas inspekcji
     virtual void display() const {
@@ -87,7 +94,7 @@ public:
         case legendary: cout << "\033[33mLegendary"; break;
         }
         cout << "\033[37m";
-        cout << ")\n";
+        cout << ", Favorite: " << (isFavorite ? "Yes" : "No") << ")\n";
     }
 
     // Użycie przedmiotu (domyślnie niemożliwe)
@@ -102,10 +109,26 @@ public:
     float getPrice() const { return price; }
     int getDurability() const { return durability; }
     Rarities getRarity() const { return rarity; }
+    bool getIsFavorite() const { return isFavorite; }
 
     // Settery dla modyfikacji atrybutów
     void setPrice(float newPrice) { price = newPrice; }
     void setDurability(int newDurability) { durability = newDurability; }
+
+    // Przełączanie statusu ulubionego i aktualizacja nazwy
+    void toggleFavorite() {
+        isFavorite = !isFavorite;
+        if (isFavorite) {
+            if (name.find("#favorite") == string::npos) {
+                name += "#favorite";
+            }
+        } else {
+            size_t pos = name.find("#favorite");
+            if (pos != string::npos) {
+                name.erase(pos, string("#favorite").length());
+            }
+        }
+    }
 };
 
 // Deklaracja klasy Player przed jej użyciem
@@ -405,6 +428,8 @@ public:
     }
 
     // Wyświetlanie ekwipunku w siatce 4x4
+    // Wyświetlanie ekwipunku w siatce 4x4
+    // Wyświetlanie ekwipunku w siatce 4x4
     void showInventoryGridWithCursor(int cursorRow, int cursorCol) const {
         cout << "\033[36m";
         cout << "=== INVENTORY (4x4) ===\n";
@@ -416,8 +441,11 @@ public:
             cout << row + 1 << " |";
             for (int col = 0; col < 4; ++col) {
                 int index = row * 4 + col;
-                if (row == cursorRow && col == cursorCol) cout << "\033[31m[";
-                else cout << " ";
+                if (row == cursorRow && col == cursorCol) {
+                    cout << (index < inventory.size() && inventory[index]->getIsFavorite() ? "\033[33m{" : "\033[31m[");
+                } else {
+                    cout << " ";
+                }
                 if (index < inventory.size()) {
                     switch (inventory[index]->getRarity()) {
                     case common: cout << "\033[90m"; break;
@@ -426,21 +454,25 @@ public:
                     case rare: cout << "\033[35m"; break;
                     case legendary: cout << "\033[33m"; break;
                     }
-                    cout << inventory[index]->getName()[0];
+                    cout << (inventory[index]->getIsFavorite() ? '*' : inventory[index]->getName()[0]);
                     cout << "\033[37m";
                 } else {
                     cout << " ";
                 }
-                if (row == cursorRow && col == cursorCol) cout << "\033[31m]";
-                else cout << " ";
+                if (row == cursorRow && col == cursorCol) {
+                    cout << (index < inventory.size() && inventory[index]->getIsFavorite() ? "\033[33m}" : "\033[31m]");
+                } else {
+                    cout << " ";
+                }
                 cout << "\033[37m|";
             }
             cout << "\n  +---+---+---+---+\n";
         }
         cout << "\033[37m";
-        cout << "\n[I] Inspect  [E] Equip  [U] Use  [Q] Drop  [C] Sort  [X] Exit\n";
+        cout << "\n[I] Inspect  [E] Equip  [U] Use  [Q] Drop  [C] Sort  [M] Move  [X] Exit\n";
     }
 
+    // Inspekcja przedmiotów w ekwipunku
     // Inspekcja przedmiotów w ekwipunku
     void inspectItem() {
         if (inventory.empty()) {
@@ -466,8 +498,15 @@ public:
                 if (index < inventory.size()) {
                     cout << "\033[2J\033[1;1H\033[36m=== ITEM DETAILS ===\n";
                     inventory[index]->display();
-                    cout << "\033[37m\nPress any key to continue...";
-                    getch();
+                    cout << "\033[37m\n[F] Toggle Favorite  [X] Back\n";
+                    char choice = tolower(getch());
+                    if (choice == 'f') {
+                        inventory[index]->toggleFavorite();
+                        cout << "\033[32m" << inventory[index]->getName() << " is now "
+                             << (inventory[index]->getIsFavorite() ? "marked as favorite!" : "unmarked as favorite!") << "\n";
+                        cout << "\033[37mPress any key to continue...";
+                        getch();
+                    }
                 } else {
                     cout << "\033[33mNo item in this slot!\n\033[37m";
                     this_thread::sleep_for(chrono::seconds(1));
@@ -540,10 +579,14 @@ public:
             if (input == 'q') {
                 int index = cursorRow * 4 + cursorCol;
                 if (index < inventory.size()) {
-                    cout << "\033[2J\033[1;1H";
-                    cout << "\033[33mDropped " << inventory[index]->getName() << "!\n";
-                    delete inventory[index];
-                    inventory.erase(inventory.begin() + index);
+                    if (inventory[index]->getIsFavorite()) {
+                        cout << "\033[33mCannot drop favorite items!\n\033[37m";
+                    } else {
+                        cout << "\033[2J\033[1;1H";
+                        cout << "\033[33mDropped " << inventory[index]->getName() << "!\n";
+                        delete inventory[index];
+                        inventory.erase(inventory.begin() + index);
+                    }
                     cout << "\033[37mPress any key to continue...";
                     getch();
                 } else {
@@ -610,6 +653,69 @@ public:
         } while (input != 'x');
     }
 
+    // Przenoszenie przedmiotów w ekwipunku
+    void moveItemInInventory() {
+        if (inventory.empty()) {
+            cout << "\033[33mNo items to move!\n\033[37m";
+            this_thread::sleep_for(chrono::seconds(1));
+            return;
+        }
+
+        int cursorRow = 0, cursorCol = 0;
+        int selectedIndex = -1;
+        char input;
+        bool isMoving = false;
+
+        do {
+            cout << "\033[2J\033[1;1H";
+            showInventoryGridWithCursor(cursorRow, cursorCol);
+            if (isMoving) {
+                cout << "\033[36mMoving " << inventory[selectedIndex]->getName() << ". Press [M] to place or [X] to cancel.\n";
+            }
+            input = tolower(getch());
+
+            if (input == 'w' && cursorRow > 0) cursorRow--;
+            if (input == 's' && cursorRow < 3) cursorRow++;
+            if (input == 'a' && cursorCol > 0) cursorCol--;
+            if (input == 'd' && cursorCol < 3) cursorCol++;
+
+            if (input == 'm' && !isMoving) {
+                int index = cursorRow * 4 + cursorCol;
+                if (index < inventory.size()) {
+                    selectedIndex = index;
+                    isMoving = true;
+                    cout << "\033[32mSelected " << inventory[selectedIndex]->getName() << " to move.\n";
+                } else {
+                    cout << "\033[33mNo item in this slot!\n\033[37m";
+                    this_thread::sleep_for(chrono::seconds(1));
+                }
+            } else if (input == 'm' && isMoving) {
+                int targetIndex = cursorRow * 4 + cursorCol;
+                if (targetIndex >= 0 && targetIndex < 16) {
+                    if (targetIndex < inventory.size()) {
+                        // Swap items
+                        swap(inventory[selectedIndex], inventory[targetIndex]);
+                        cout << "\033[32mSwapped " << inventory[targetIndex]->getName() << " with "
+                             << inventory[selectedIndex]->getName() << "!\n";
+                    } else {
+                        // Move to empty slot
+                        inventory.push_back(inventory[selectedIndex]);
+                        inventory.erase(inventory.begin() + selectedIndex);
+                        cout << "\033[32mMoved " << inventory.back()->getName() << " to new slot!\n";
+                    }
+                    isMoving = false;
+                    cout << "\033[37mPress any key to continue...";
+                    getch();
+                } else {
+                    cout << "\033[33mInvalid target slot!\n\033[37m";
+                    this_thread::sleep_for(chrono::seconds(1));
+                }
+            } else if (input == 'x') {
+                isMoving = false;
+            }
+        } while (input != 'x' || isMoving);
+    }
+
     // Dodawanie przedmiotu do ekwipunku
     void addItemToInventory(Item* item) {
         if (inventory.size() < 16) {
@@ -646,6 +752,8 @@ class NPC {
 public:
     string name;            // Imię sprzedawcy
     vector<Item*> shopItems; // Lista przedmiotów w sklepie
+
+    //
 
     // Konstruktor NPC, generuje asortyment zależny od poziomu gracza
     NPC(string n, int playerLevel) : name(n) {
@@ -796,7 +904,7 @@ public:
             int x = rand() % size;
             int y = rand() % size;
             if (grid[y][x] == '.' && (x != playerX || y != playerY)) {
-                obstacles.push_back({ x, y });
+                obstacles.push_back(std::make_pair(x, y));
                 grid[y][x] = '#';
             }
         }
@@ -810,7 +918,7 @@ public:
             int x = rand() % size;
             int y = rand() % size;
             if (grid[y][x] == '.' && (x != playerX || y != playerY)) {
-                chests.push_back({ x, y });
+                chests.push_back(std::make_pair(x, y));
                 grid[y][x] = 'C';
             }
         }
@@ -838,7 +946,7 @@ public:
             int x = rand() % size;
             int y = rand() % size;
             if (grid[y][x] == '.' && (x != playerX || y != playerY)) {
-                npcs.push_back({ x, y });
+                npcs.push_back(std::make_pair(x, y));
                 grid[y][x] = 'N';
             }
         }
@@ -1031,6 +1139,7 @@ int main() {
                 case 'u': player.useItemFromInventory(); break;
                 case 'q': player.dropItemFromInventory(); break;
                 case 'c': player.sortInventory(); break;
+                case 'm': player.moveItemInInventory(); break;
                 }
             } while (inventoryChoice != 'x');
         } else if (input == 'w' || input == 'a' || input == 's' || input == 'd') {

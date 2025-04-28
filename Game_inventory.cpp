@@ -10,6 +10,9 @@
 #include <functional>
 #include <iomanip>
 #include <random>
+#include <fstream>
+#include <filesystem>
+#include <sstream>
 
 #ifdef _WIN32
 #include <conio.h>
@@ -19,17 +22,17 @@
 #include <fcntl.h>
 #endif
 using namespace std;
+namespace fs = std::filesystem;
 
 // Wyliczenia dla rzadkości przedmiotów i pogody
 enum Rarities { common, uncommon, magic, rare, legendary };
 enum Weather { sunny, rainy, cloudy };
 
-// Obsługa wejścia w systemach Windows
+// Obsługa wejścia w systemach Windows i Unix
 #ifdef _WIN32
 int getch() { return _getch(); }
 int kbhit() { return _kbhit(); }
 #else
-// Pobieranie pojedynczego znaku bez oczekiwania na Enter
 int getch() {
     struct termios oldt, newt;
     int ch;
@@ -42,7 +45,6 @@ int getch() {
     return ch;
 }
 
-// Sprawdzanie, czy klawisz został naciśnięty
 bool kbhit() {
     struct termios oldt, newt;
     int oldf;
@@ -63,26 +65,20 @@ bool kbhit() {
 }
 #endif
 
-// Bazowa klasa dla przedmiotów w grze
+// Bazowa klasa dla przedmiotów
 class Item {
 protected:
-    string name;        // Nazwa przedmiotu
-    float price;        // Cena w złocie
-    int durability;     // Trwałość przedmiotu
-    Rarities rarity;    // Rzadkość przedmiotu
-    bool isFavorite;    // Czy przedmiot jest ulubiony
+    string name;
+    float price;
+    int durability;
+    Rarities rarity;
+    bool isFavorite;
 public:
-    // Konstruktor domyślny
     Item() : name("Scrap"), price(0.1f), durability(100), rarity(common), isFavorite(false) {}
-
-    // Konstruktor z parametrami
     Item(string name, float price, int durability, Rarities rarity)
         : name(name), price(price), durability(durability), rarity(rarity), isFavorite(false) {}
-
-    // Wirtualny destruktor dla poprawnego zwalniania pamięci w klasach pochodnych
     virtual ~Item() {}
 
-    // Wyświetlanie szczegółów przedmiotu podczas inspekcji
     virtual void display() const {
         cout << "\033[37m";
         cout << name << " (" << price << "g, Durability: " << durability << ", Rarity: ";
@@ -97,25 +93,19 @@ public:
         cout << ", Favorite: " << (isFavorite ? "Yes" : "No") << ")\n";
     }
 
-    // Użycie przedmiotu (domyślnie niemożliwe)
     virtual void use(class Player& player) {
-        cout << "\033[31m";
-        cout << "This item cannot be used directly!\n";
-        cout << "\033[37m";
+        cout << "\033[31mThis item cannot be used directly!\n\033[37m";
     }
 
-    // Gettery dla atrybutów przedmiotu
     string getName() const { return name; }
     float getPrice() const { return price; }
     int getDurability() const { return durability; }
     Rarities getRarity() const { return rarity; }
     bool getIsFavorite() const { return isFavorite; }
 
-    // Settery dla modyfikacji atrybutów
     void setPrice(float newPrice) { price = newPrice; }
     void setDurability(int newDurability) { durability = newDurability; }
 
-    // Przełączanie statusu ulubionego i aktualizacja nazwy
     void toggleFavorite() {
         isFavorite = !isFavorite;
         if (isFavorite) {
@@ -129,22 +119,27 @@ public:
             }
         }
     }
-};
 
-// Deklaracja klasy Player przed jej użyciem
-class Player;
+    // Serializacja przedmiotu do zapisu
+    virtual string serialize() const {
+        stringstream ss;
+        ss << "Item|" << name << "|" << price << "|" << durability << "|" << rarity << "|" << isFavorite;
+        return ss.str();
+    }
+
+    // Deserializacja przedmiotu
+    static Item* deserialize(const string& data);
+};
 
 // Klasa dla mikstury zdrowia
 class HealthPotion : public Item {
 private:
-    float healAmount; // Ilość HP przywracana przez miksturę
+    float healAmount;
 public:
     HealthPotion() : Item("Health Potion", 20.0f, 1, common), healAmount(30.0f) {}
 
-    // Użycie mikstury (leczy gracza)
     void use(Player& player) override;
 
-    // Wyświetlanie mikstury w sklepie
     void display() const override {
         cout << left << setw(20) << name;
         switch (rarity) {
@@ -160,8 +155,13 @@ public:
         cout << "\033[37m";
     }
 
+    string serialize() const override {
+        stringstream ss;
+        ss << "HealthPotion|" << name << "|" << price << "|" << durability << "|" << rarity << "|" << isFavorite << "|" << healAmount;
+        return ss.str();
+    }
+
 private:
-    // Pomocnicza metoda do konwersji rzadkości na string
     string getRarityString() const {
         switch (rarity) {
         case common: return "Common";
@@ -177,14 +177,13 @@ private:
 // Klasa dla broni
 class Weapon : public Item {
 private:
-    float damage;       // Obrażenia zadawane przez broń
-    int strengthBonus;  // Bonus do siły
+    float damage;
+    int strengthBonus;
 public:
     Weapon() : Item("Basic Sword", 50.0f, 100, common), damage(20.0f), strengthBonus(2) {}
     Weapon(string name, float price, int durability, Rarities rarity, float damage, int strengthBonus)
         : Item(name, price, durability, rarity), damage(damage), strengthBonus(strengthBonus) {}
 
-    // Wyświetlanie broni w sklepie
     void display() const override {
         cout << left << setw(20) << name;
         switch (rarity) {
@@ -200,12 +199,16 @@ public:
         cout << "\033[37m";
     }
 
-    // Gettery dla atrybutów broni
     float getDamage() const { return damage; }
     int getStrengthBonus() const { return strengthBonus; }
 
+    string serialize() const override {
+        stringstream ss;
+        ss << "Weapon|" << name << "|" << price << "|" << durability << "|" << rarity << "|" << isFavorite << "|" << damage << "|" << strengthBonus;
+        return ss.str();
+    }
+
 private:
-    // Pomocnicza metoda do konwersji rzadkości na string
     string getRarityString() const {
         switch (rarity) {
         case common: return "Common";
@@ -221,14 +224,13 @@ private:
 // Klasa dla zbroi
 class Armor : public Item {
 private:
-    float defense;     // Obrona zapewniana przez zbroję
-    int agilityBonus;  // Bonus do zręczności
+    float defense;
+    int agilityBonus;
 public:
     Armor() : Item("Basic Armor", 60.0f, 100, common), defense(5.0f), agilityBonus(2) {}
     Armor(string name, float price, int durability, Rarities rarity, float defense, int agilityBonus)
         : Item(name, price, durability, rarity), defense(defense), agilityBonus(agilityBonus) {}
 
-    // Wyświetlanie zbroi w sklepie
     void display() const override {
         cout << left << setw(20) << name;
         switch (rarity) {
@@ -244,12 +246,16 @@ public:
         cout << "\033[37m";
     }
 
-    // Gettery dla atrybutów zbroi
     float getDefense() const { return defense; }
     int getAgilityBonus() const { return agilityBonus; }
 
+    string serialize() const override {
+        stringstream ss;
+        ss << "Armor|" << name << "|" << price << "|" << durability << "|" << rarity << "|" << isFavorite << "|" << defense << "|" << agilityBonus;
+        return ss.str();
+    }
+
 private:
-    // Pomocnicza metoda do konwersji rzadkości na string
     string getRarityString() const {
         switch (rarity) {
         case common: return "Common";
@@ -262,73 +268,129 @@ private:
     }
 };
 
+// Deserializacja przedmiotu
+Item* Item::deserialize(const string& data) {
+    vector<string> tokens;
+    stringstream ss(data);
+    string token;
+    while (getline(ss, token, '|')) {
+        tokens.push_back(token);
+    }
+
+    if (tokens.empty()) return nullptr;
+
+    string type = tokens[0];
+    Item* item = nullptr;
+
+    if (type == "Item") {
+        if (tokens.size() != 6) return nullptr;
+        string name = tokens[1];
+        float price = stof(tokens[2]);
+        int durability = stoi(tokens[3]);
+        Rarities rarity = static_cast<Rarities>(stoi(tokens[4]));
+        bool isFavorite = tokens[5] == "1";
+        item = new Item(name, price, durability, rarity);
+        if (isFavorite) item->toggleFavorite();
+    } else if (type == "HealthPotion") {
+        if (tokens.size() != 7) return nullptr;
+        string name = tokens[1];
+        float price = stof(tokens[2]);
+        int durability = stoi(tokens[3]);
+        Rarities rarity = static_cast<Rarities>(stoi(tokens[4]));
+        bool isFavorite = tokens[5] == "1";
+        float healAmount = stof(tokens[6]);
+        item = new HealthPotion();
+        item->setPrice(price);
+        item->setDurability(durability);
+        if (isFavorite) item->toggleFavorite();
+    } else if (type == "Weapon") {
+        if (tokens.size() != 8) return nullptr;
+        string name = tokens[1];
+        float price = stof(tokens[2]);
+        int durability = stoi(tokens[3]);
+        Rarities rarity = static_cast<Rarities>(stoi(tokens[4]));
+        bool isFavorite = tokens[5] == "1";
+        float damage = stof(tokens[6]);
+        int strengthBonus = stoi(tokens[7]);
+        item = new Weapon(name, price, durability, rarity, damage, strengthBonus);
+        if (isFavorite) item->toggleFavorite();
+    } else if (type == "Armor") {
+        if (tokens.size() != 8) return nullptr;
+        string name = tokens[1];
+        float price = stof(tokens[2]);
+        int durability = stoi(tokens[3]);
+        Rarities rarity = static_cast<Rarities>(stoi(tokens[4]));
+        bool isFavorite = tokens[5] == "1";
+        float defense = stof(tokens[6]);
+        int agilityBonus = stoi(tokens[7]);
+        item = new Armor(name, price, durability, rarity, defense, agilityBonus);
+        if (isFavorite) item->toggleFavorite();
+    }
+
+    return item;
+}
+
 // Klasa dla przeciwników
 class Enemy {
 public:
-    string name;        // Nazwa przeciwnika
-    float HP;           // Punkty życia
-    float damage;       // Obrażenia zadawane przez przeciwnika
-    int experience;     // Doświadczenie za pokonanie
-    int x, y;           // Pozycja na mapie
+    string name;
+    float HP;
+    float damage;
+    int experience;
+    int x, y;
 
     Enemy(string n, float hp, float dmg, int level, int xPos, int yPos)
         : name(n), HP(hp), damage(dmg), experience(20 + level * 5), x(xPos), y(yPos) {}
 
-    // Atak przeciwnika na gracza
     void attack(float& playerHP) const {
         float actualDamage = max(1.0f, damage - (rand() % 5));
         playerHP -= actualDamage;
-        cout << "\033[31m";
-        cout << name << " attacks for " << actualDamage << " damage! Player HP: " << playerHP << "\n";
-        cout << "\033[37m";
+        cout << "\033[31m" << name << " attacks for " << actualDamage << " damage! Player HP: " << playerHP << "\n\033[37m";
     }
 };
 
-// Klasa gracza
+// Klasa Player
+
 class Player {
 private:
-    string name;            // Imię gracza
-    float HP;               // Aktualne punkty życia
-    float maxHP;            // Maksymalne punkty życia
-    float gold;             // Ilość złota
-    int level;              // Poziom gracza
-    int experience;         // Aktualne doświadczenie
-    int nextLevelExp;       // Doświadczenie wymagane do następnego poziomu
-    Weapon weapon;          // Aktualnie wyposażona broń
-    Armor armor;            // Aktualnie wyposażona zbroja
-    vector<Item*> inventory; // Ekwipunek gracza
-    map<string, int> stats;  // Statystyki gracza (siła, zręczność, inteligencja)
+    string name;
+    float HP;
+    float maxHP;
+    float gold;
+    int level;
+    int experience;
+    int nextLevelExp;
+    Weapon weapon;
+    Armor armor;
+    vector<Item*> inventory;
+    map<string, int> stats;
 
 public:
-    // Konstruktor gracza
-    Player(string n) : name(n), HP(100.0f), maxHP(100.0f), gold(100.0f), level(1), experience(0), nextLevelExp(100) {
+    // Konstruktor z parametrem kontrolującym dodawanie początkowych przedmiotów
+    Player(string n, bool addInitialItems = true) : name(n), HP(100.0f), maxHP(100.0f), gold(100.0f), level(1), experience(0), nextLevelExp(100) {
         stats["strength"] = 10;
         stats["agility"] = 10;
         stats["intelligence"] = 10;
 
-        // Dodanie początkowych przedmiotów do ekwipunku
-        inventory.push_back(new Weapon("Basic Sword", 50.0f, 100, common, 20.0f, 2));
-        inventory.push_back(new Armor("Basic Armor", 60.0f, 100, common, 5.0f, 2));
-        inventory.push_back(new HealthPotion());
-        // Aktualizacja statystyk na podstawie początkowego wyposażenia
-        stats["strength"] += weapon.getStrengthBonus();
-        stats["agility"] += armor.getAgilityBonus();
+        if (addInitialItems) {
+            // Dodaj początkowe przedmioty tylko dla nowego gracza
+            inventory.push_back(new Weapon("Basic Sword", 50.0f, 100, common, 20.0f, 2));
+            inventory.push_back(new Armor("Basic Armor", 60.0f, 100, common, 5.0f, 2));
+            inventory.push_back(new HealthPotion());
+            stats["strength"] += weapon.getStrengthBonus();
+            stats["agility"] += armor.getAgilityBonus();
+        }
     }
 
-    // Destruktor zwalniający pamięć przedmiotów
     ~Player() {
         for (auto item : inventory) delete item;
     }
 
-    // Leczenie gracza
     void heal(float amount) {
         HP = min(maxHP, HP + amount);
-        cout << "\033[32m";
-        cout << "Healed for " << amount << " HP. Current HP: " << HP << "/" << maxHP << "\n";
-        cout << "\033[37m";
+        cout << "\033[32mHealed for " << amount << " HP. Current HP: " << HP << "/" << maxHP << "\n\033[37m";
     }
 
-    // Wyświetlanie statystyk gracza
     void showStats() const {
         cout << "\033[36m";
         cout << "Player: " << name << " | HP: " << HP << "/" << maxHP << " | Gold: " << gold << "\n";
@@ -342,16 +404,12 @@ public:
         cout << "\033[37m";
     }
 
-    // Dodawanie doświadczenia
     void gainExperience(int exp) {
         experience += exp;
-        cout << "\033[32m";
-        cout << "Gained " << exp << " experience points!\n";
-        cout << "\033[37m";
+        cout << "\033[32mGained " << exp << " experience points!\n\033[37m";
         if (experience >= nextLevelExp) levelUp();
     }
 
-    // Awans na nextLevelExp
     void levelUp() {
         level++;
         experience -= nextLevelExp;
@@ -361,22 +419,16 @@ public:
         stats["strength"] += 2;
         stats["agility"] += 2;
         stats["intelligence"] += 2;
-        cout << "\033[32m";
-        cout << "Level Up! You are now level " << level << "!\n";
-        cout << "\033[37m";
+        cout << "\033[32mLevel Up! You are now level " << level << "!\n\033[37m";
     }
 
-    // Atak gracza na przeciwnika
     bool attack(Enemy& enemy) {
         float damage = weapon.getDamage() + stats.at("strength");
-        cout << "\033[31m";
-        cout << "You attack " << enemy.name << " for " << damage << " damage!\n";
-        cout << "\033[37m";
+        cout << "\033[31mYou attack " << enemy.name << " for " << damage << " damage!\n\033[37m";
         enemy.HP -= damage;
 
         if (enemy.HP <= 0) {
-            cout << "\033[31m";
-            cout << "Enemy " << enemy.name << " has fallen!\n";
+            cout << "\033[31mEnemy " << enemy.name << " has fallen!\n";
             cout << R"(
             (x_x)
              /|\
@@ -391,7 +443,6 @@ public:
         }
     }
 
-    // Otwieranie skrzyni i zdobywanie łupów
     void lootChest(int level) {
         float lootGold = static_cast<float>(rand() % 100 + 1);
         gold += lootGold;
@@ -415,21 +466,14 @@ public:
 
         if (newItem && inventory.size() < 16) {
             inventory.push_back(newItem);
-            cout << "\033[32m";
-            cout << "Found " << lootGold << " gold, an item, and " << expGained << " EXP!\n";
-            cout << "\033[37m";
+            cout << "\033[32mFound " << lootGold << " gold, an item, and " << expGained << " EXP!\n\033[37m";
         } else {
             delete newItem;
-            cout << "\033[33m";
-            cout << "Inventory full! Item discarded.\n";
-            cout << "\033[37m";
+            cout << "\033[33mInventory full! Item discarded.\n\033[37m";
         }
         this_thread::sleep_for(chrono::seconds(1));
     }
 
-    // Wyświetlanie ekwipunku w siatce 4x4
-    // Wyświetlanie ekwipunku w siatce 4x4
-    // Wyświetlanie ekwipunku w siatce 4x4
     void showInventoryGridWithCursor(int cursorRow, int cursorCol) const {
         cout << "\033[36m";
         cout << "=== INVENTORY (4x4) ===\n";
@@ -472,8 +516,6 @@ public:
         cout << "\n[I] Inspect  [E] Equip  [U] Use  [Q] Drop  [C] Sort  [M] Move  [X] Exit\n";
     }
 
-    // Inspekcja przedmiotów w ekwipunku
-    // Inspekcja przedmiotów w ekwipunku
     void inspectItem() {
         if (inventory.empty()) {
             cout << "\033[33mNo items to inspect!\n\033[37m";
@@ -515,7 +557,6 @@ public:
         } while (input != 'x');
     }
 
-    // Używanie przedmiotów z ekwipunku
     void useItemFromInventory() {
         if (inventory.empty()) {
             cout << "\033[33mNo items to use!\n\033[37m";
@@ -556,7 +597,6 @@ public:
         } while (input != 'x');
     }
 
-    // Usuwanie przedmiotów z ekwipunku
     void dropItemFromInventory() {
         if (inventory.empty()) {
             cout << "\033[33mNo items to drop!\n\033[37m";
@@ -597,7 +637,6 @@ public:
         } while (input != 'x');
     }
 
-    // Sortowanie ekwipunku po rzadkości (malejąco)
     void sortInventory() {
         sort(inventory.begin(), inventory.end(), [](const Item* a, const Item* b) {
             return a->getRarity() > b->getRarity();
@@ -606,7 +645,6 @@ public:
         this_thread::sleep_for(chrono::seconds(1));
     }
 
-    // Wyposażanie przedmiotów z ekwipunku
     void equipFromInventory() {
         if (inventory.empty()) {
             cout << "\033[33mNo items to equip!\n\033[37m";
@@ -653,7 +691,6 @@ public:
         } while (input != 'x');
     }
 
-    // Przenoszenie przedmiotów w ekwipunku
     void moveItemInInventory() {
         if (inventory.empty()) {
             cout << "\033[33mNo items to move!\n\033[37m";
@@ -693,12 +730,10 @@ public:
                 int targetIndex = cursorRow * 4 + cursorCol;
                 if (targetIndex >= 0 && targetIndex < 16) {
                     if (targetIndex < inventory.size()) {
-                        // Swap items
                         swap(inventory[selectedIndex], inventory[targetIndex]);
                         cout << "\033[32mSwapped " << inventory[targetIndex]->getName() << " with "
                              << inventory[selectedIndex]->getName() << "!\n";
                     } else {
-                        // Move to empty slot
                         inventory.push_back(inventory[selectedIndex]);
                         inventory.erase(inventory.begin() + selectedIndex);
                         cout << "\033[32mMoved " << inventory.back()->getName() << " to new slot!\n";
@@ -716,7 +751,6 @@ public:
         } while (input != 'x' || isMoving);
     }
 
-    // Dodawanie przedmiotu do ekwipunku
     void addItemToInventory(Item* item) {
         if (inventory.size() < 16) {
             inventory.push_back(item);
@@ -727,13 +761,128 @@ public:
         }
     }
 
-    // Wydawanie złota
     void spendGold(float amount) { gold -= amount; }
 
-    // Gettery dla atrybutów gracza
     float getHP() const { return HP; }
     float getGold() const { return gold; }
     int getLevel() const { return level; }
+    string getName() const { return name; }
+
+    // Zapis stanu gracza do pliku
+    void saveToFile() const {
+        fs::create_directory("saves");
+        string filename = "saves/player_" + name + ".txt";
+        ofstream file(filename);
+        if (!file.is_open()) {
+            cout << "\033[31mFailed to save game!\n\033[37m";
+            return;
+        }
+
+        file << "Stats\n";
+        file << "name:" << name << "\n";
+        file << "HP:" << HP << "\n";
+        file << "maxHP:" << maxHP << "\n";
+        file << "gold:" << gold << "\n";
+        file << "level:" << level << "\n";
+        file << "experience:" << experience << "\n";
+        file << "nextLevelExp:" << nextLevelExp << "\n";
+        file << "strength:" << stats.at("strength") << "\n";
+        file << "agility:" << stats.at("agility") << "\n";
+        file << "intelligence:" << stats.at("intelligence") << "\n";
+
+        file << "Weapon\n";
+        file << weapon.serialize() << "\n";
+
+        file << "Armor\n";
+        file << armor.serialize() << "\n";
+
+        file << "Inventory\n";
+        for (const auto& item : inventory) {
+            file << item->serialize() << "\n";
+        }
+        file << "End\n";
+
+        file.close();
+        cout << "\033[32mGame saved successfully!\n\033[37m";
+    }
+
+    // Wczytanie stanu gracza z pliku
+    static Player* loadFromFile(const string& playerName) {
+        string filename = "saves/player_" + playerName + ".txt";
+        ifstream file(filename);
+        if (!file.is_open()) {
+            return nullptr;
+        }
+
+        // Utwórz gracza bez początkowych przedmiotów
+        Player* player = new Player(playerName, false);
+        string line;
+        string section;
+
+        // Wyczyść domyślny ekwipunek, broń i zbroję
+        for (auto item : player->inventory) delete item;
+        player->inventory.clear();
+        player->stats["strength"] -= player->weapon.getStrengthBonus();
+        player->stats["agility"] -= player->armor.getAgilityBonus();
+        player->weapon = Weapon();
+        player->armor = Armor();
+
+        while (getline(file, line)) {
+            if (line == "Stats") {
+                section = "Stats";
+                continue;
+            } else if (line == "Weapon") {
+                section = "Weapon";
+                continue;
+            } else if (line == "Armor") {
+                section = "Armor";
+                continue;
+            } else if (line == "Inventory") {
+                section = "Inventory";
+                continue;
+            } else if (line == "End") {
+                break;
+            }
+
+            if (section == "Stats") {
+                size_t pos = line.find(':');
+                if (pos == string::npos) continue;
+                string key = line.substr(0, pos);
+                string value = line.substr(pos + 1);
+                if (key == "HP") player->HP = stof(value);
+                else if (key == "maxHP") player->maxHP = stof(value);
+                else if (key == "gold") player->gold = stof(value);
+                else if (key == "level") player->level = stoi(value);
+                else if (key == "experience") player->experience = stoi(value);
+                else if (key == "nextLevelExp") player->nextLevelExp = stoi(value);
+                else if (key == "strength") player->stats["strength"] = stoi(value);
+                else if (key == "agility") player->stats["agility"] = stoi(value);
+                else if (key == "intelligence") player->stats["intelligence"] = stoi(value);
+            } else if (section == "Weapon") {
+                Item* item = Item::deserialize(line);
+                if (Weapon* weaponPtr = dynamic_cast<Weapon*>(item)) {
+                    player->weapon = *weaponPtr;
+                    player->stats["strength"] += player->weapon.getStrengthBonus();
+                }
+                delete item;
+            } else if (section == "Armor") {
+                Item* item = Item::deserialize(line);
+                if (Armor* armorPtr = dynamic_cast<Armor*>(item)) {
+                    player->armor = *armorPtr;
+                    player->stats["agility"] += player->armor.getAgilityBonus();
+                }
+                delete item;
+            } else if (section == "Inventory") {
+                Item* item = Item::deserialize(line);
+                if (item) {
+                    player->inventory.push_back(item);
+                }
+            }
+        }
+
+        file.close();
+        return player;
+    }
 };
 
 // Definicja metody use dla HealthPotion
@@ -741,26 +890,17 @@ void HealthPotion::use(Player& player) {
     player.heal(healAmount);
     durability--;
     if (durability <= 0) {
-        cout << "\033[31m";
-        cout << "Potion used up!\n";
-        cout << "\033[37m";
+        cout << "\033[31mPotion used up!\n\033[37m"; // Fixed: Changed coutFIT to cout
     }
 }
-
 // Klasa dla NPC (sprzedawcy)
 class NPC {
 public:
-    string name;            // Imię sprzedawcy
-    vector<Item*> shopItems; // Lista przedmiotów w sklepie
+    string name;
+    vector<Item*> shopItems;
 
-    //
-
-    // Konstruktor NPC, generuje asortyment zależny od poziomu gracza
     NPC(string n, int playerLevel) : name(n) {
-        // Zawsze dodaj miksturę zdrowia
         shopItems.push_back(new HealthPotion());
-
-        // Pula wszystkich dostępnych przedmiotów
         vector<Item*> itemPool = {
             new Weapon("Basic Sword", 50.0f, 100, common, 20.0f, 2),
             new Armor("Basic Armor", 60.0f, 100, common, 5.0f, 2),
@@ -774,7 +914,6 @@ public:
             new Armor("Mythril Armor", 520.0f, 300, legendary, 25.0f, 10)
         };
 
-        // Filtruj przedmioty na podstawie poziomu mapy
         vector<Item*> filteredItems;
         for (auto item : itemPool) {
             if (playerLevel <= 2 && (item->getRarity() <= uncommon)) {
@@ -784,36 +923,28 @@ public:
             } else if (playerLevel >= 5) {
                 filteredItems.push_back(item);
             } else {
-                delete item; // Usuń nieużywane przedmioty
+                delete item;
             }
         }
 
-        // Określ liczbę przedmiotów w sklepie (oprócz mikstury)
         int itemsToAdd = min(static_cast<int>(filteredItems.size()), 2 + playerLevel / 2);
-
-        // Losowo wybierz przedmioty z filtrowanej puli
         std::shuffle(filteredItems.begin(), filteredItems.end(), std::default_random_engine(std::random_device()()));
         for (int i = 0; i < itemsToAdd && i < filteredItems.size(); ++i) {
             shopItems.push_back(filteredItems[i]);
         }
 
-        // Zwolnij pamięć dla niewybranych przedmiotów
         for (size_t i = itemsToAdd; i < filteredItems.size(); ++i) {
             delete filteredItems[i];
         }
     }
 
-    // Destruktor zwalniający pamięć przedmiotów w sklepie
     ~NPC() {
         for (auto item : shopItems) delete item;
     }
 
-    // Wyświetlanie sklepu w formie tabeli
     void showShop() const {
-        cout << "\033[2J\033[1;1H";
-        cout << "\033[36m";
-        cout << "=== Welcome to " << name << "'s Shop ===\n";
-        cout << "\033[37m";
+        cout << "\033[2J\033[1;1H\033[36m";
+        cout << "=== Welcome to " << name << "'s Shop ===\n\033[37m";
         cout << left;
         cout << setw(4) << "No" << setw(20) << "Item" << setw(12) << "Rarity" << setw(8) << "Price" << setw(20) << "Stats" << "\n";
         cout << string(64, '-') << "\n";
@@ -824,11 +955,9 @@ public:
             cout << "\n";
         }
 
-        cout << string(64, '-') << "\n";
-        cout << "\033[37m";
+        cout << string(64, '-') << "\n\033[37m";
     }
 
-    // Handel z graczem
     void trade(Player& player) {
         char choice;
         do {
@@ -872,18 +1001,17 @@ public:
 // Klasa mapy gry
 class Map {
 private:
-    vector<vector<char>> grid; // Siatka mapy
-    int size;                  // Rozmiar mapy
-    int playerX, playerY;      // Pozycja gracza
-    vector<Enemy> enemies;     // Lista przeciwników
-    vector<pair<int, int>> chests; // Lista skrzyń
-    vector<pair<int, int>> npcs;   // Lista NPC
-    vector<pair<int, int>> obstacles; // Lista przeszkód
-    Weather weather;           // Aktualna pogoda
-    string location;           // Nazwa lokacji
+    vector<vector<char>> grid;
+    int size;
+    int playerX, playerY;
+    vector<Enemy> enemies;
+    vector<pair<int, int>> chests;
+    vector<pair<int, int>> npcs;
+    vector<pair<int, int>> obstacles;
+    Weather weather;
+    string location;
 
 public:
-    // Konstruktor mapy
     Map(int level) : size(10 + level * 2), weather(sunny), location("Map Level " + to_string(level)) {
         grid.resize(size, vector<char>(size, '.'));
         playerX = size / 2;
@@ -896,7 +1024,6 @@ public:
         generateNPCs(level);
     }
 
-    // Generowanie przeszkód na mapie
     void generateObstacles(int level) {
         obstacles.clear();
         int numObstacles = size + level * 2;
@@ -910,7 +1037,6 @@ public:
         }
     }
 
-    // Generowanie skrzyń na mapie
     void generateChests(int level) {
         chests.clear();
         int numChests = (level * 5 + 5) / 2;
@@ -924,7 +1050,6 @@ public:
         }
     }
 
-    // Generowanie przeciwników na mapie
     void generateEnemies(int level) {
         enemies.clear();
         int numEnemies = (level * 5 + 5) / 2;
@@ -938,7 +1063,6 @@ public:
         }
     }
 
-    // Generowanie NPC na mapie
     void generateNPCs(int level) {
         npcs.clear();
         int numNPCs = 2 + level / 2;
@@ -952,7 +1076,6 @@ public:
         }
     }
 
-    // Wyświetlanie mapy
     void display() const {
         cout << "\033[36m";
         cout << "Location: " << location << "\n";
@@ -974,12 +1097,12 @@ public:
 
         for (auto& row : displayGrid) {
             for (char tile : row) {
-                if (tile == 'P') cout << "\033[36m"; // Gracz: jasnoniebieski
-                else if (tile == 'C') cout << "\033[33m"; // Skrzynia: złoty
-                else if (tile == 'E') cout << "\033[31m"; // Wróg: czerwony
-                else if (tile == 'N') cout << "\033[32m"; // NPC: zielony
-                else if (tile == '#') cout << "\033[90m"; // Przeszkoda: szary
-                else cout << "\033[37m"; // Pole: biały
+                if (tile == 'P') cout << "\033[36m";
+                else if (tile == 'C') cout << "\033[33m";
+                else if (tile == 'E') cout << "\033[31m";
+                else if (tile == 'N') cout << "\033[32m";
+                else if (tile == '#') cout << "\033[90m";
+                else cout << "\033[37m";
                 cout << tile << " ";
             }
             cout << endl;
@@ -987,7 +1110,6 @@ public:
         cout << "\033[37m";
     }
 
-    // Ruch gracza na mapie
     void movePlayer(char direction) {
         int newX = playerX, newY = playerY;
         switch (tolower(direction)) {
@@ -1005,7 +1127,6 @@ public:
         }
     }
 
-    // Sprawdzanie, czy gracz jest blisko skrzyni
     bool isNearChest(int& chestX, int& chestY) const {
         for (auto& chest : chests) {
             if (abs(chest.first - playerX) <= 1 && abs(chest.second - playerY) <= 1) {
@@ -1017,7 +1138,6 @@ public:
         return false;
     }
 
-    // Pobieranie pobliskiego przeciwnika
     Enemy* getNearbyEnemy() {
         for (auto& enemy : enemies) {
             if (abs(enemy.x - playerX) <= 1 && abs(enemy.y - playerY) <= 1) {
@@ -1027,7 +1147,6 @@ public:
         return nullptr;
     }
 
-    // Sprawdzanie, czy gracz jest blisko NPC
     bool isNearNPC(int& npcX, int& npcY) const {
         for (auto& npc : npcs) {
             if (abs(npc.first - playerX) <= 1 && abs(npc.second - playerY) <= 1) {
@@ -1039,7 +1158,6 @@ public:
         return false;
     }
 
-    // Usuwanie skrzyni z mapy
     void removeChest(int x, int y) {
         for (auto it = chests.begin(); it != chests.end(); ++it) {
             if (it->first == x && it->second == y) {
@@ -1050,24 +1168,86 @@ public:
         }
     }
 
-    // Usuwanie przeciwnika z mapy
     bool removeEnemy(int x, int y) {
         for (auto it = enemies.begin(); it != enemies.end(); ++it) {
             if (it->x == x && it->y == y) {
                 enemies.erase(it);
-                grid[y][x] = '.';
+                grid[y][x] = '.'; // Fixed: Corrected syntax from '. to '.'
                 return true;
             }
         }
         return false;
     }
 
-    // Zmiana pogody na mapie
     void changeWeather() {
         weather = static_cast<Weather>(rand() % 3);
     }
 };
 
+// Funkcja wyświetlająca ekran powitalny
+void displayWelcomeScreen(vector<string>& playerNames, string& selectedPlayer) {
+    cout << "\033[2J\033[1;1H\033[36m";
+    cout << R"(
+        +------------------------------------+
+        |                                    |
+        |         WELCOME TO THE GAME        |
+        |                                    |
+        +------------------------------------+
+    )" << "\n\033[37m";
+
+    cout << "\033[33mSelect a player or create a new one:\n\033[37m";
+    cout << string(40, '-') << "\n";
+
+    if (playerNames.empty()) {
+        cout << "\033[31mNo saved players found.\n\033[37m";
+    } else {
+        for (size_t i = 0; i < playerNames.size(); ++i) {
+            cout << "[" << (i + 1) << "] " << playerNames[i] << "\n";
+        }
+    }
+
+    cout << string(40, '-') << "\n";
+    cout << "[N] Create new player\n";
+    cout << "Enter choice: ";
+
+    char choice = getch();
+    cout << "\n";
+
+    if (choice >= '1' && choice <= '0' + playerNames.size()) {
+        selectedPlayer = playerNames[choice - '1'];
+    } else if (choice == 'n' || choice == 'N') {
+        cout << "\033[36mEnter new player name: \033[37m";
+        getline(cin, selectedPlayer);
+        while (selectedPlayer.empty() || find(playerNames.begin(), playerNames.end(), selectedPlayer) != playerNames.end()) {
+            cout << "\033[31mName is empty or already exists! Try again: \033[37m";
+            getline(cin, selectedPlayer);
+        }
+    } else {
+        cout << "\033[31mInvalid choice! Creating new player...\n\033[37m";
+        cout << "\033[36mEnter new player name: \033[37m";
+        getline(cin, selectedPlayer);
+        while (selectedPlayer.empty() || find(playerNames.begin(), playerNames.end(), selectedPlayer) != playerNames.end()) {
+            cout << "\033[31mName is empty or already exists! Try again: \033[37m";
+            getline(cin, selectedPlayer);
+        }
+    }
+}
+
+// Funkcja pobierająca listę zapisanych graczy
+vector<string> getSavedPlayers() {
+    vector<string> playerNames;
+    fs::create_directory("saves");
+    for (const auto& entry : fs::directory_iterator("saves")) {
+        string filename = entry.path().filename().string();
+        // Sprawdź, czy nazwa pliku zaczyna się na "player_" i kończy na ".txt"
+        if (filename.rfind("player_", 0) == 0 && filename.size() >= 4 && filename.substr(filename.size() - 4) == ".txt") {
+            string playerName = filename.substr(7, filename.size() - 11); // Usuń "player_" i ".txt"
+            playerNames.push_back(playerName);
+        }
+    }
+    sort(playerNames.begin(), playerNames.end());
+    return playerNames;
+}
 // Główna funkcja gry
 int main() {
 #ifdef _WIN32
@@ -1077,35 +1257,59 @@ int main() {
 #endif
 
     srand(time(0));
-    Player player("Hero");
-    Map gameMap(player.getLevel());
-    int currentLevel = player.getLevel();
+
+    // Wyświetl ekran powitalny
+    vector<string> playerNames = getSavedPlayers();
+    string selectedPlayer;
+    displayWelcomeScreen(playerNames, selectedPlayer);
+
+    // Wczytaj lub utwórz gracza
+    Player* player = Player::loadFromFile(selectedPlayer);
+    if (!player) {
+        player = new Player(selectedPlayer);
+        cout << "\033[32mNew player created: " << selectedPlayer << "\n\033[37m";
+        this_thread::sleep_for(chrono::seconds(1));
+    } else {
+        cout << "\033[32mLoaded player: " << selectedPlayer << "\n\033[37m";
+        this_thread::sleep_for(chrono::seconds(1));
+    }
+
+    Map gameMap(player->getLevel());
+    int currentLevel = player->getLevel();
     int weatherChangeCounter = 0;
+    int actionCounter = 0;
+    const int AUTOSAVE_FREQUENCY = 10;
 
     // Główna pętla gry
-    while (player.getHP() > 0) {
-        if (player.getLevel() > currentLevel) {
-            gameMap = Map(player.getLevel());
-            currentLevel = player.getLevel();
+    while (player->getHP() > 0) {
+        if (player->getLevel() > currentLevel) {
+            gameMap = Map(player->getLevel());
+            currentLevel = player->getLevel();
             cout << "\033[32mNew map generated for level " << currentLevel << "!\n\033[37m";
             this_thread::sleep_for(chrono::seconds(1));
         }
 
         cout << "\033[2J\033[1;1H";
         gameMap.display();
-        player.showStats();
-        cout << "Move (W/A/S/D), Fight (F), Loot (L), Trade (T), Inventory (I): ";
+        player->showStats();
+        cout << "Move (W/A/S/D), Fight (F), Loot (L), Trade (T), Inventory (I), Save (V): ";
 
         char input = tolower(getch());
         int x, y;
 
-        if (input == 'f') {
+        bool actionPerformed = false;
+
+        if (input == 'v') {
+            player->saveToFile();
+            this_thread::sleep_for(chrono::seconds(1));
+        } else if (input == 'f') {
             Enemy* enemy = gameMap.getNearbyEnemy();
             if (enemy != nullptr) {
-                bool enemyDefeated = player.attack(*enemy);
+                bool enemyDefeated = player->attack(*enemy);
                 if (enemyDefeated) {
                     gameMap.removeEnemy(enemy->x, enemy->y);
                 }
+                actionPerformed = true;
                 this_thread::sleep_for(chrono::seconds(1));
             } else {
                 cout << "\033[33mNo enemy nearby!\n\033[37m";
@@ -1113,16 +1317,18 @@ int main() {
             }
         } else if (input == 'l') {
             if (gameMap.isNearChest(x, y)) {
-                player.lootChest(currentLevel);
+                player->lootChest(currentLevel);
                 gameMap.removeChest(x, y);
+                actionPerformed = true;
             } else {
                 cout << "\033[33mNo chest nearby!\n\033[37m";
                 this_thread::sleep_for(chrono::seconds(1));
             }
         } else if (input == 't') {
             if (gameMap.isNearNPC(x, y)) {
-                NPC npc("Merchant", player.getLevel());
-                npc.trade(player);
+                NPC npc("Merchant", player->getLevel());
+                npc.trade(*player);
+                actionPerformed = true;
             } else {
                 cout << "\033[33mNo NPC nearby!\n\033[37m";
                 this_thread::sleep_for(chrono::seconds(1));
@@ -1131,19 +1337,28 @@ int main() {
             char inventoryChoice;
             do {
                 cout << "\033[2J\033[1;1H";
-                player.showInventoryGridWithCursor(0, 0);
+                player->showInventoryGridWithCursor(0, 0);
                 inventoryChoice = tolower(getch());
                 switch (inventoryChoice) {
-                case 'i': player.inspectItem(); break;
-                case 'e': player.equipFromInventory(); break;
-                case 'u': player.useItemFromInventory(); break;
-                case 'q': player.dropItemFromInventory(); break;
-                case 'c': player.sortInventory(); break;
-                case 'm': player.moveItemInInventory(); break;
+                case 'i': player->inspectItem(); actionPerformed = true; break;
+                case 'e': player->equipFromInventory(); actionPerformed = true; break;
+                case 'u': player->useItemFromInventory(); actionPerformed = true; break;
+                case 'q': player->dropItemFromInventory(); actionPerformed = true; break;
+                case 'c': player->sortInventory(); actionPerformed = true; break;
+                case 'm': player->moveItemInInventory(); actionPerformed = true; break;
                 }
             } while (inventoryChoice != 'x');
         } else if (input == 'w' || input == 'a' || input == 's' || input == 'd') {
             gameMap.movePlayer(input);
+            actionPerformed = true;
+        }
+
+        if (actionPerformed) {
+            actionCounter++;
+            if (actionCounter >= AUTOSAVE_FREQUENCY) {
+                player->saveToFile();
+                actionCounter = 0;
+            }
         }
 
         if (++weatherChangeCounter % 10 == 0) gameMap.changeWeather();
@@ -1152,5 +1367,10 @@ int main() {
     cout << "\033[2J\033[1;1H\033[31m";
     cout << "Game Over! Your hero has fallen.\n";
     cout << "\033[37m";
+
+    // Zapisz grę po śmierci
+    player->saveToFile();
+    delete player;
+
     return 0;
 }
